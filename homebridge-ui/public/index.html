@@ -1,0 +1,361 @@
+<style>
+  .zont-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .zont-card {
+    border: 1px solid var(--border-color, #d9d9d9);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--card-bg, rgba(255, 255, 255, 0.9));
+  }
+
+  .zont-circuit {
+    border-top: 1px dashed var(--border-color, #d9d9d9);
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .muted {
+    opacity: 0.75;
+    font-size: 12px;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>
+
+<div class="zont-card">
+  <h4 class="mb-3">ZONT Credentials</h4>
+  <div class="zont-grid">
+    <div>
+      <label class="form-label" for="clientEmail">Client Email (X-ZONT-Client)</label>
+      <input id="clientEmail" class="form-control" type="email" />
+    </div>
+    <div>
+      <label class="form-label" for="login">Login</label>
+      <input id="login" class="form-control" type="text" autocomplete="username" />
+    </div>
+    <div>
+      <label class="form-label" for="password">Password</label>
+      <input id="password" class="form-control" type="password" autocomplete="current-password" />
+    </div>
+    <div>
+      <label class="form-label" for="token">Token</label>
+      <input id="token" class="form-control" type="password" />
+    </div>
+    <div>
+      <label class="form-label" for="pollInterval">Poll Interval (sec)</label>
+      <input id="pollInterval" class="form-control" type="number" min="10" max="300" step="1" value="30" />
+    </div>
+    <div>
+      <label class="form-label" for="platformName">Platform Name</label>
+      <input id="platformName" class="form-control" type="text" value="ZONT" />
+    </div>
+    <div>
+      <label class="form-label" for="accessoryNameMode">Accessory Names</label>
+      <select id="accessoryNameMode" class="form-select">
+        <option value="device_and_circuit">Device - Circuit</option>
+        <option value="circuit_only">Circuit only</option>
+      </select>
+    </div>
+  </div>
+  <div class="actions mt-3">
+    <button id="getTokenBtn" class="btn btn-primary btn-sm" type="button">Get Token by Login/Password</button>
+    <button id="discoverBtn" class="btn btn-outline-primary btn-sm" type="button">Load Devices and Circuits</button>
+  </div>
+  <div class="muted mt-2">Tip: token is used for runtime. Login/password can be left empty after token is saved. Use the standard Homebridge Save button below.</div>
+</div>
+
+<div class="zont-card">
+  <h4 class="mb-2">Device and Circuit Selection</h4>
+  <div id="devicesContainer" class="muted">Press "Load Devices and Circuits" to continue.</div>
+</div>
+
+<script>
+  const state = {
+    config: null,
+    devices: [],
+  };
+
+  const ui = {
+    clientEmail: document.getElementById('clientEmail'),
+    login: document.getElementById('login'),
+    password: document.getElementById('password'),
+    token: document.getElementById('token'),
+    pollInterval: document.getElementById('pollInterval'),
+    platformName: document.getElementById('platformName'),
+    accessoryNameMode: document.getElementById('accessoryNameMode'),
+    getTokenBtn: document.getElementById('getTokenBtn'),
+    discoverBtn: document.getElementById('discoverBtn'),
+    devicesContainer: document.getElementById('devicesContainer'),
+  };
+
+  let stageTimer = null;
+
+  let initialized = false;
+
+  async function init() {
+    if (initialized) {
+      return;
+    }
+
+    initialized = true;
+
+    try {
+      await loadConfig();
+      bindEvents();
+    } catch (error) {
+      initialized = false;
+      homebridge.toast.error(error.message || 'Failed to load plugin configuration');
+      homebridge.hideSpinner();
+    }
+  }
+
+  homebridge.addEventListener('ready', init);
+
+  // Homebridge UI 5 may have already fired the ready event before inline scripts run.
+  setTimeout(init, 0);
+
+  function bindEvents() {
+    ui.getTokenBtn.addEventListener('click', onGetToken);
+    ui.discoverBtn.addEventListener('click', onDiscover);
+
+    [
+      ui.clientEmail,
+      ui.login,
+      ui.password,
+      ui.token,
+      ui.pollInterval,
+      ui.platformName,
+      ui.accessoryNameMode,
+    ].forEach((el) => {
+      el.addEventListener('input', scheduleStageConfig);
+      el.addEventListener('change', scheduleStageConfig);
+    });
+  }
+
+  async function loadConfig() {
+    const pluginConfigRaw = await homebridge.getPluginConfig();
+    const pluginConfig = Array.isArray(pluginConfigRaw) ? pluginConfigRaw : [];
+    const existing = pluginConfig.find((x) => x.platform === 'ZontPlatform') || {
+      platform: 'ZontPlatform',
+      name: 'ZONT',
+      pollInterval: 30,
+      selectedDevices: [],
+    };
+
+    state.config = existing;
+
+    ui.clientEmail.value = existing.clientEmail || '';
+    ui.login.value = existing.login || '';
+    ui.password.value = existing.password || '';
+    ui.token.value = existing.token || '';
+    ui.pollInterval.value = Number(existing.pollInterval || 30);
+    ui.platformName.value = existing.name || 'ZONT';
+    ui.accessoryNameMode.value = existing.accessoryNameMode || 'device_and_circuit';
+  }
+
+  async function onGetToken() {
+    try {
+      homebridge.showSpinner();
+      const result = await homebridge.request('/auth-token', {
+        clientEmail: ui.clientEmail.value.trim(),
+        login: ui.login.value.trim(),
+        password: ui.password.value,
+      });
+
+      ui.token.value = result.token;
+      await stageConfigDraft();
+      homebridge.toast.success('Token generated successfully.');
+    } catch (error) {
+      homebridge.toast.error(error.message || 'Token request failed');
+    } finally {
+      homebridge.hideSpinner();
+    }
+  }
+
+  async function onDiscover() {
+    try {
+      homebridge.showSpinner();
+      const result = await homebridge.request('/discover', {
+        clientEmail: ui.clientEmail.value.trim(),
+        token: ui.token.value.trim(),
+        login: ui.login.value.trim(),
+        password: ui.password.value,
+      });
+
+      state.devices = result.devices || [];
+      renderDevices();
+      await stageConfigDraft();
+      homebridge.toast.success(`Loaded ${state.devices.length} devices.`);
+    } catch (error) {
+      homebridge.toast.error(error.message || 'Failed to load devices');
+    } finally {
+      homebridge.hideSpinner();
+    }
+  }
+
+  function renderDevices() {
+    if (!state.devices.length) {
+      ui.devicesContainer.innerHTML = '<div class="muted">No heating devices found.</div>';
+      return;
+    }
+
+    const selectedMap = new Map(
+      (state.config.selectedDevices || []).map((x) => [
+        Number(x.id),
+        {
+          includeAll: inferIncludeAll(x),
+          includeSet: new Set((x.includeCircuitIds || []).map(Number)),
+        },
+      ]),
+    );
+
+    const html = state.devices.map((device) => {
+      const selectedState = selectedMap.get(Number(device.id));
+      const deviceChecked = selectedMap.has(Number(device.id));
+
+      const circuitsHtml = device.circuits.map((circuit) => {
+        const recommended = circuit.recommendedInclude;
+        const checked = selectedState
+          ? (selectedState.includeAll || selectedState.includeSet.has(Number(circuit.id)))
+          : recommended;
+
+        const badge = circuit.technical
+          ? '<span class="badge text-bg-secondary">technical</span>'
+          : '<span class="badge text-bg-success">recommended</span>';
+
+        const currentText = typeof circuit.actualTemp === 'number' ? `${circuit.actualTemp.toFixed(1)} C` : 'n/a';
+        const targetText = typeof circuit.targetTemp === 'number' ? `${circuit.targetTemp.toFixed(1)} C` : 'n/a';
+
+        return `
+          <div class="zont-circuit">
+            <div class="form-check">
+              <input class="form-check-input circuit-check" type="checkbox"
+                data-device-id="${device.id}" data-circuit-id="${circuit.id}" ${checked ? 'checked' : ''} ${deviceChecked ? '' : 'disabled'}>
+              <label class="form-check-label">
+                <strong>${escapeHtml(circuit.name)}</strong> (#${circuit.id}) ${badge}
+              </label>
+            </div>
+            <div class="muted">type: ${escapeHtml(circuit.typeLabel)}, current: ${currentText}, target: ${targetText}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="zont-card">
+          <div class="form-check">
+            <input class="form-check-input device-check" type="checkbox" id="device-${device.id}" data-device-id="${device.id}" ${deviceChecked ? 'checked' : ''}>
+            <label class="form-check-label" for="device-${device.id}">
+              <strong>${escapeHtml(device.name)}</strong> (#${device.id})
+            </label>
+          </div>
+          <div class="muted">type: ${escapeHtml(device.deviceType || 'unknown')}, online: ${String(device.online)}</div>
+          ${circuitsHtml}
+        </div>
+      `;
+    }).join('');
+
+    ui.devicesContainer.innerHTML = html;
+
+    ui.devicesContainer.querySelectorAll('.device-check').forEach((el) => {
+      el.addEventListener('change', async (event) => {
+        const deviceId = event.target.dataset.deviceId;
+        const enabled = event.target.checked;
+        ui.devicesContainer.querySelectorAll(`.circuit-check[data-device-id="${deviceId}"]`).forEach((c) => {
+          c.disabled = !enabled;
+        });
+
+        await stageConfigDraft();
+      });
+    });
+
+    ui.devicesContainer.querySelectorAll('.circuit-check').forEach((el) => {
+      el.addEventListener('change', scheduleStageConfig);
+    });
+  }
+
+  function scheduleStageConfig() {
+    if (stageTimer) {
+      clearTimeout(stageTimer);
+    }
+
+    stageTimer = setTimeout(() => {
+      stageTimer = null;
+      stageConfigDraft().catch((error) => {
+        homebridge.toast.error(error.message || 'Failed to stage configuration');
+      });
+    }, 250);
+  }
+
+  async function stageConfigDraft() {
+    const nextConfig = {
+      platform: 'ZontPlatform',
+      name: ui.platformName.value.trim() || 'ZONT',
+      clientEmail: ui.clientEmail.value.trim(),
+      login: ui.login.value.trim(),
+      password: ui.password.value,
+      token: ui.token.value.trim(),
+      pollInterval: Number(ui.pollInterval.value || 30),
+      accessoryNameMode: ui.accessoryNameMode.value,
+      selectedDevices: collectSelectedDevices(),
+    };
+
+    const pluginConfigRaw = await homebridge.getPluginConfig();
+    const pluginConfig = Array.isArray(pluginConfigRaw) ? pluginConfigRaw : [];
+    const withoutCurrent = pluginConfig.filter((x) => x.platform !== 'ZontPlatform');
+    withoutCurrent.push(nextConfig);
+
+    await homebridge.updatePluginConfig(withoutCurrent);
+    state.config = nextConfig;
+  }
+
+  function collectSelectedDevices() {
+    const selectedDeviceCheckboxes = [...ui.devicesContainer.querySelectorAll('.device-check')]
+      .filter((x) => x.checked);
+
+    return selectedDeviceCheckboxes.map((deviceEl) => {
+      const deviceId = Number(deviceEl.dataset.deviceId);
+      const allCircuits = [...ui.devicesContainer.querySelectorAll(`.circuit-check[data-device-id="${deviceId}"]`)];
+      const checkedCircuits = allCircuits
+        .filter((x) => x.checked)
+        .map((x) => Number(x.dataset.circuitId));
+
+      const includeAll = allCircuits.length > 0 && checkedCircuits.length === allCircuits.length;
+
+      return {
+        id: deviceId,
+        includeAll,
+        includeCircuitIds: includeAll ? [] : checkedCircuits,
+      };
+    });
+  }
+
+  function inferIncludeAll(deviceSelection) {
+    if (deviceSelection && typeof deviceSelection.includeAll === 'boolean') {
+      return deviceSelection.includeAll;
+    }
+
+    if (!deviceSelection || !Array.isArray(deviceSelection.includeCircuitIds) || deviceSelection.includeCircuitIds.length === 0) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function escapeHtml(input) {
+    return String(input)
+      .split('&').join('&amp;')
+      .split('<').join('&lt;')
+      .split('>').join('&gt;')
+      .split('"').join('&quot;')
+      .split("'").join('&#039;');
+  }
+</script>

@@ -1,0 +1,26 @@
+# Source control and automation
+.git
+.github
+
+# Local dependencies and package manager output
+node_modules/
+*.tgz
+npm-debug.log*
+
+# Logs and diagnostics
+*.log
+logs/
+report.*.json
+
+# Local environment and Homebridge config
+.env
+.env.*
+config.json
+auth.json
+persist/
+accessories/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/

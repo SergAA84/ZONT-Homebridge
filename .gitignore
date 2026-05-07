@@ -1,0 +1,23 @@
+node_modules/
+npm-debug.log*
+
+# Logs and diagnostics
+*.log
+logs/
+report.*.json
+
+# Local environment and Homebridge config
+.env
+.env.*
+config.json
+auth.json
+persist/
+accessories/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+
+# npm output
+*.tgz

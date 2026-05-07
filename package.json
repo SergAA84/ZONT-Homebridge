@@ -1,0 +1,52 @@
+{
+  "name": "homebridge-zont-thermostat",
+  "version": "0.1.0",
+  "displayName": "Homebridge ZONT Thermostat",
+  "description": "Homebridge plugin for ZONT heating circuits as thermostats",
+  "author": "SergAA",
+  "license": "MIT",
+  "homepage": "https://github.com/SergAA84/ZONT-Homebridge#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SergAA84/ZONT-Homebridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SergAA84/ZONT-Homebridge/issues"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "node --check index.js && node --check lib/settings.js && node --check lib/zontClient.js && node --check lib/platform.js && node --check lib/platformAccessory.js && node --check homebridge-ui/server.js && node --check test/zontClient.test.js && node --check test/platform.test.js && node --check test/package.test.js && node --check test/zontLive.test.js",
+    "test": "node --test test/*.test.js",
+    "check": "npm run lint && npm test"
+  },
+  "files": [
+    "index.js",
+    "config.schema.json",
+    "lib",
+    "homebridge-ui",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "homebridge-plugin",
+    "homebridge",
+    "zont",
+    "thermostat"
+  ],
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0",
+    "homebridge": "^2.0.0"
+  },
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "^2.0.1"
+  },
+  "homebridge": {
+    "platformName": "ZontPlatform",
+    "pluginAlias": "ZontPlatform",
+    "pluginType": "platform",
+    "singular": true
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "pluginAlias": "ZontPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "strictValidation": false,
+  "customUi": true,
+  "schema": {
+    "type": "object",
+    "required": [
+      "name",
+      "clientEmail",
+      "token"
+    ],
+    "properties": {
+      "name": {
+        "title": "Name",
+        "type": "string",
+        "default": "ZONT"
+      },
+      "clientEmail": {
+        "title": "ZONT Client Header (email)",
+        "type": "string"
+      },
+      "login": {
+        "title": "ZONT Login",
+        "type": "string"
+      },
+      "password": {
+        "title": "ZONT Password",
+        "type": "string"
+      },
+      "token": {
+        "title": "ZONT Token",
+        "type": "string"
+      },
+      "pollInterval": {
+        "title": "Poll Interval (seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 10,
+        "maximum": 300
+      },
+      "accessoryNameMode": {
+        "title": "Accessory Name Format",
+        "type": "string",
+        "default": "device_and_circuit",
+        "oneOf": [
+          {
+            "title": "Device - Circuit",
+            "enum": [
+              "device_and_circuit"
+            ]
+          },
+          {
+            "title": "Circuit Only",
+            "enum": [
+              "circuit_only"
+            ]
+          }
+        ]
+      },
+      "selectedDevices": {
+        "title": "Selected Devices and Circuits",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "includeAll": {
+              "type": "boolean"
+            },
+            "includeCircuitIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "form": [
+    "name",
+    "clientEmail",
+    "login",
+    {
+      "key": "password",
+      "type": "password"
+    },
+    {
+      "key": "token",
+      "type": "password"
+    },
+    "pollInterval",
+    "accessoryNameMode"
+  ]
+}
