@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning.
 
+## [0.1.1] - 2026-05-07
+
+- Added project logo assets.
+- Updated README branding.
+
 ## [0.1.0] - 2026-05-07
 
 - Initial public package preparation.

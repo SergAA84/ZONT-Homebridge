@@ -53,7 +53,7 @@ View logs from the Homebridge UI or with `hb-service logs` where available.
 Useful expected log lines:
 
 ```text
-Loaded plugin: homebridge-zont-thermostat@0.1.0
+Loaded plugin: homebridge-zont-thermostat@0.1.1
 Registering platform 'homebridge-zont-thermostat.ZontPlatform'
 [homebridge-zont-thermostat] Custom UI server ready
 ```
