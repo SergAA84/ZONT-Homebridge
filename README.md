@@ -22,6 +22,7 @@ The plugin uses ZONT Widget API v3 and the Homebridge plugin settings UI. It doe
 - Device discovery via `GET /devices?fields=circuits,modes,sensors,connection`.
 - Per-device and per-circuit selection.
 - Automatic HomeKit `Thermostat` creation for selected circuits.
+- Optional HomeKit `TemperatureSensor` and `HumiditySensor` creation for selected ZONT sensors.
 - Target temperature write-back via `POST /devices/{device_id}/circuits/{entity_id}/actions/target-temp`.
 - Dynamic HomeKit target temperature `min`, `max`, and `step` from ZONT circuit data.
 - Technical circuits (`boiler`, `dhw`) are not selected by default.
@@ -54,9 +55,10 @@ Open the plugin settings in Homebridge UI.
 3. Click `Get Token by Login/Password`.
 4. Click `Load Devices and Circuits`.
 5. Select devices and circuits to expose to HomeKit.
-6. Choose accessory naming mode.
-7. Click the standard Homebridge `Save` button.
-8. Restart Homebridge when prompted.
+6. Optionally select temperature and humidity sensors to expose to HomeKit.
+7. Choose accessory naming mode.
+8. Click the standard Homebridge `Save` button.
+9. Restart Homebridge when prompted.
 
 After token generation, login/password may be removed from the config if you prefer to keep only the token.
 
@@ -76,6 +78,12 @@ After token generation, login/password may be removed from the config if you pre
       "includeAll": false,
       "includeCircuitIds": [1111, 2222]
     }
+  ],
+  "selectedSensors": [
+    {
+      "deviceId": 123456,
+      "sensorIds": [3333, 4444]
+    }
   ]
 }
 ```
@@ -91,6 +99,32 @@ After token generation, login/password may be removed from the config if you pre
 - `pollInterval`: polling interval in seconds. Minimum runtime value is 10 seconds.
 - `accessoryNameMode`: `device_and_circuit` or `circuit_only`.
 - `selectedDevices`: selected ZONT devices and circuits.
+- `selectedSensors`: selected ZONT temperature and humidity sensors.
+
+## Sensor Selection
+
+The custom settings UI shows supported ZONT sensors after device discovery. The plugin can expose:
+
+- `temperature` sensors as HomeKit `TemperatureSensor` accessories.
+- `humidity` sensors as HomeKit `HumiditySensor` accessories.
+
+Outdoor sensors are recommended by name only when the sensor name contains `Улица`, `outdoor`, or `outside`. Internet weather sensors such as `Погода из интернета` are shown as optional and are not selected by default. Other sensor types, such as pressure, voltage, modulation, and flow speed, are shown by ZONT API but are not exposed to HomeKit by this plugin.
+
+## Network Access
+
+The plugin requires network access to communicate with the official ZONT Widget API v3:
+
+```text
+https://my.zont.online/api/widget/v3
+```
+
+Network requests are limited to ZONT API operations needed for setup, discovery, polling, and thermostat control:
+
+- `POST /authtokens` to create a ZONT API token from login/password.
+- `GET /devices` to discover devices and read circuit state.
+- `POST /devices/{device_id}/circuits/{entity_id}/actions/target-temp` to change target temperature.
+
+The API base URL is fixed in the plugin code. Users cannot configure an arbitrary remote endpoint. ZONT login, password, token, and `X-ZONT-Client` email are only used for requests to the ZONT API. The plugin does not use analytics, tracking, telemetry, or third-party services.
 
 ## Troubleshooting
 

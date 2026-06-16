@@ -79,6 +79,24 @@
             }
           }
         }
+      },
+      "selectedSensors": {
+        "title": "Selected Sensors",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deviceId": {
+              "type": "integer"
+            },
+            "sensorIds": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        }
       }
     }
   },

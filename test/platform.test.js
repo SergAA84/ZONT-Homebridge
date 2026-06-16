@@ -15,6 +15,16 @@ test('normalizeSelectedDevices infers includeAll when circuit ids are absent', (
   ]);
 });
 
+test('normalizeSelectedSensors keeps finite device and sensor ids', () => {
+  assert.deepEqual(platformInternals.normalizeSelectedSensors([
+    { deviceId: '123456', sensorIds: ['8793', 'bad', 4101] },
+    { deviceId: 'bad', sensorIds: [1] },
+    { deviceId: 222222, sensorIds: [] },
+  ]), [
+    { deviceId: 123456, sensorIds: [8793, 4101] },
+  ]);
+});
+
 test('buildAccessoryName supports both naming modes and sanitizes spaces', () => {
   assert.equal(
     platformInternals.buildAccessoryName({ accessoryNameMode: 'device_and_circuit' }, ' House  Name ', '  2  SU '),

@@ -25,4 +25,5 @@ test('config schema matches Homebridge platform alias and custom UI', () => {
   assert.equal(schema.customUi, true);
   assert.ok(schema.schema.required.includes('clientEmail'));
   assert.ok(schema.schema.required.includes('token'));
+  assert.equal(schema.schema.properties.selectedSensors.type, 'array');
 });

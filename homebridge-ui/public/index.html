@@ -78,6 +78,12 @@
   <div id="devicesContainer" class="muted">Press "Load Devices and Circuits" to continue.</div>
 </div>
 
+<div class="zont-card">
+  <h4 class="mb-2">Sensor Selection</h4>
+  <div class="muted mb-2">Temperature and humidity sensors can be exposed to HomeKit. Outdoor sensors are recommended by name only.</div>
+  <div id="sensorsContainer" class="muted">Press "Load Devices and Circuits" to continue.</div>
+</div>
+
 <script>
   const state = {
     config: null,
@@ -95,6 +101,7 @@
     getTokenBtn: document.getElementById('getTokenBtn'),
     discoverBtn: document.getElementById('discoverBtn'),
     devicesContainer: document.getElementById('devicesContainer'),
+    sensorsContainer: document.getElementById('sensorsContainer'),
   };
 
   let stageTimer = null;
@@ -193,6 +200,7 @@
 
       state.devices = result.devices || [];
       renderDevices();
+      renderSensors();
       await stageConfigDraft();
       homebridge.toast.success(`Loaded ${state.devices.length} devices.`);
     } catch (error) {
@@ -282,6 +290,67 @@
     });
   }
 
+  function renderSensors() {
+    const devicesWithSensors = state.devices
+      .map((device) => ({
+        ...device,
+        sensors: (device.sensors || []).filter((sensor) => sensor.supported),
+      }))
+      .filter((device) => device.sensors.length > 0);
+
+    if (!devicesWithSensors.length) {
+      ui.sensorsContainer.innerHTML = '<div class="muted">No supported temperature or humidity sensors found.</div>';
+      return;
+    }
+
+    const selectedMap = new Map(
+      (state.config.selectedSensors || []).map((x) => [
+        Number(x.deviceId),
+        new Set((x.sensorIds || []).map(Number)),
+      ]),
+    );
+
+    const html = devicesWithSensors.map((device) => {
+      const selectedSet = selectedMap.get(Number(device.id));
+      const sensorsHtml = device.sensors.map((sensor) => {
+        const checked = selectedSet
+          ? selectedSet.has(Number(sensor.id))
+          : sensor.recommendedInclude;
+        const typeLabel = sensor.type === 'humidity' ? 'Humidity' : 'Temperature';
+        const valueText = typeof sensor.value === 'number' ? `${sensor.value}${sensor.unit || ''}` : 'n/a';
+        const badge = sensor.recommendedInclude
+          ? '<span class="badge text-bg-success">recommended</span>'
+          : '<span class="badge text-bg-secondary">optional</span>';
+
+        return `
+          <div class="zont-circuit">
+            <div class="form-check">
+              <input class="form-check-input sensor-check" type="checkbox"
+                data-device-id="${device.id}" data-sensor-id="${sensor.id}" ${checked ? 'checked' : ''}>
+              <label class="form-check-label">
+                <strong>${escapeHtml(sensor.name)}</strong> (#${sensor.id}) ${badge}
+              </label>
+            </div>
+            <div class="muted">type: ${typeLabel}, value: ${escapeHtml(valueText)}, status: ${escapeHtml(sensor.status || 'n/a')}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="zont-card">
+          <strong>${escapeHtml(device.name)}</strong> (#${device.id})
+          <div class="muted">Supported sensors: ${device.sensors.length}</div>
+          ${sensorsHtml}
+        </div>
+      `;
+    }).join('');
+
+    ui.sensorsContainer.innerHTML = html;
+    ui.sensorsContainer.querySelectorAll('.sensor-check').forEach((el) => {
+      el.addEventListener('change', scheduleStageConfig);
+    });
+  }
+
   function scheduleStageConfig() {
     if (stageTimer) {
       clearTimeout(stageTimer);
@@ -306,6 +375,7 @@
       pollInterval: Number(ui.pollInterval.value || 30),
       accessoryNameMode: ui.accessoryNameMode.value,
       selectedDevices: collectSelectedDevices(),
+      selectedSensors: collectSelectedSensors(),
     };
 
     const pluginConfigRaw = await homebridge.getPluginConfig();
@@ -318,6 +388,10 @@
   }
 
   function collectSelectedDevices() {
+    if (!state.devices.length) {
+      return state.config.selectedDevices || [];
+    }
+
     const selectedDeviceCheckboxes = [...ui.devicesContainer.querySelectorAll('.device-check')]
       .filter((x) => x.checked);
 
@@ -336,6 +410,31 @@
         includeCircuitIds: includeAll ? [] : checkedCircuits,
       };
     });
+  }
+
+  function collectSelectedSensors() {
+    if (!state.devices.length) {
+      return state.config.selectedSensors || [];
+    }
+
+    const sensorCheckboxes = [...ui.sensorsContainer.querySelectorAll('.sensor-check')]
+      .filter((x) => x.checked);
+
+    const byDevice = new Map();
+    sensorCheckboxes.forEach((sensorEl) => {
+      const deviceId = Number(sensorEl.dataset.deviceId);
+      const sensorId = Number(sensorEl.dataset.sensorId);
+      if (!byDevice.has(deviceId)) {
+        byDevice.set(deviceId, []);
+      }
+
+      byDevice.get(deviceId).push(sensorId);
+    });
+
+    return [...byDevice.entries()].map(([deviceId, sensorIds]) => ({
+      deviceId,
+      sensorIds,
+    }));
   }
 
   function inferIncludeAll(deviceSelection) {

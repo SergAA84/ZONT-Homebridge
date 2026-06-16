@@ -48,13 +48,13 @@ X-ZONT-Token: <token>
 X-ZONT-Client: <clientEmail>
 ```
 
-The plugin requests these fields:
+The plugin requests these fields as a comma-separated `fields` value:
 
 ```text
 circuits,modes,sensors,connection
 ```
 
-Currently only `circuits` and basic device fields are used by HomeKit runtime. The extra fields are requested to keep UI/runtime ready for future features.
+ZONT API v3 returns only the first field when repeated query parameters are used, so the plugin intentionally sends `fields=circuits,modes,sensors,connection` rather than `fields=circuits&fields=sensors`.
 
 ## Circuit Model
 
@@ -105,6 +105,28 @@ The plugin marks these circuit types as technical by default:
 These circuits are visible in the settings UI but not selected by default.
 
 Circuit types `consumer` and `cooling` are not considered technical by default.
+
+## Sensors
+
+ZONT `Sensor` fields used:
+
+- `id`: HomeKit accessory identity.
+- `name`: accessory display name.
+- `type`: HomeKit service mapping.
+- `status`: stored for UI/runtime context.
+- `value`: HomeKit current value.
+- `unit`: shown in the settings UI.
+- `battery`, `rssi`, `signal_strength`: shown in discovery data when available.
+- `limits`: shown in discovery data when available.
+
+Supported sensor types:
+
+- `temperature`: exposed as HomeKit `TemperatureSensor`.
+- `humidity`: exposed as HomeKit `HumiditySensor`.
+
+Other ZONT sensor types, such as `pressure`, `voltage`, `modulation`, and `dhw_speed`, are intentionally not exposed because HomeKit has no direct standard service mapping for them.
+
+Sensor recommendations are name-based only. Sensors containing `Улица`, `outdoor`, or `outside` are selected by default. Internet weather sensors such as `Погода из интернета` are not selected by default.
 
 ## Error Handling
 

@@ -1,7 +1,13 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { ZontClient, isTechnicalCircuit, mapZ3kDevice } = require('../lib/zontClient');
+const {
+  ZontClient,
+  isRecommendedSensor,
+  isSupportedSensor,
+  isTechnicalCircuit,
+  mapZ3kDevice,
+} = require('../lib/zontClient');
 
 test('mapZ3kDevice maps circuit fields and technical circuit flag', () => {
   const mapped = mapZ3kDevice({
@@ -34,6 +40,33 @@ test('mapZ3kDevice maps circuit fields and technical circuit flag', () => {
         type: 'dhw',
       },
     ],
+    sensors: [
+      {
+        id: '8793',
+        name: 'Улица',
+        type: 'temperature',
+        status: 'ok',
+        value: 15.6,
+        unit: '°',
+        limits: { low: -25, high: 40 },
+      },
+      {
+        id: '8526',
+        name: 'Погода из интернета',
+        type: 'temperature',
+        status: 'ok',
+        value: 13.3,
+        unit: '°',
+      },
+      {
+        id: '4101',
+        name: 'Kitchen',
+        type: 'humidity',
+        status: 'ok',
+        value: 53,
+        unit: '%',
+      },
+    ],
   });
 
   assert.equal(mapped.id, 123456);
@@ -46,6 +79,21 @@ test('mapZ3kDevice maps circuit fields and technical circuit flag', () => {
   assert.equal(mapped.circuits[0].currentMode, 3);
   assert.equal(mapped.circuits[0].technical, false);
   assert.equal(mapped.circuits[1].technical, true);
+  assert.equal(mapped.sensors[0].id, 8793);
+  assert.equal(mapped.sensors[0].recommendedInclude, true);
+  assert.equal(mapped.sensors[1].recommendedInclude, false);
+  assert.equal(mapped.sensors[2].supported, true);
+});
+
+test('sensor helpers support temperature and humidity with outdoor recommendations only', () => {
+  assert.equal(isSupportedSensor({ type: 'temperature' }), true);
+  assert.equal(isSupportedSensor({ type: 'humidity' }), true);
+  assert.equal(isSupportedSensor({ type: 'pressure' }), false);
+  assert.equal(isRecommendedSensor({ name: 'Улица', type: 'temperature' }), true);
+  assert.equal(isRecommendedSensor({ name: 'Outdoor', type: 'temperature' }), true);
+  assert.equal(isRecommendedSensor({ name: 'Outside Temp', type: 'temperature' }), true);
+  assert.equal(isRecommendedSensor({ name: 'Погода из интернета', type: 'temperature' }), false);
+  assert.equal(isRecommendedSensor({ name: 'Улица pressure', type: 'pressure' }), false);
 });
 
 test('isTechnicalCircuit only marks boiler and dhw as technical', () => {
@@ -80,7 +128,7 @@ test('getDevices sends Widget API v3 token request with expected query and heade
     assert.equal(calls[0].options.method, 'GET');
     assert.equal(calls[0].options.headers['X-ZONT-Client'], 'user@example.com');
     assert.equal(calls[0].options.headers['X-ZONT-Token'], 'token-value');
-    assert.equal(calls[0].url, 'https://my.zont.online/api/widget/v3/devices?device_ids=123456&fields=circuits&fields=modes');
+    assert.equal(calls[0].url, 'https://my.zont.online/api/widget/v3/devices?device_ids=123456&fields=circuits%2Cmodes');
     assert.equal(calls[0].options.body, undefined);
   } finally {
     global.fetch = originalFetch;
