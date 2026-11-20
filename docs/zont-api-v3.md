@@ -35,7 +35,7 @@ X-ZONT-Token: token
 
 Array query arguments are repeated, not comma-joined. `connection` is a base device field and is not included in `fields`. `modes` is requested for discovery compatibility but mode activation is not implemented.
 
-`devices` must be an array. Device/circuit IDs must be non-negative safe integers or digit strings. Invalid device/circuit structures fail the refresh before reconciliation; invalid individual sensor IDs are ignored. Sensor ID `0` is valid. Only `online === true` counts as online. Missing entity arrays mean no entities in that snapshot, not an instruction to delete selected accessories.
+`devices` must be an array. Device IDs must be non-negative safe integers or digit strings. ZONT `EntityID` has no non-negative restriction: circuit and sensor IDs accept signed safe integers or signed integer strings, including negative IDs and `0`. Preserve their sign in selections, commands and accessory identity; do not silently discard negative sensor IDs as 0.2.0 did. Invalid device/circuit structures fail the refresh before reconciliation; invalid individual sensor IDs are ignored. Booleans, null/blank IDs, fractions, non-finite numbers and unsafe integers are rejected. Only `online === true` counts as online. Missing entity arrays mean no entities in that snapshot, not an instruction to delete selected accessories.
 
 ## Circuit mapping
 

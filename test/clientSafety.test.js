@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { ZontClient, ZontApiError, isValidId, mapDevicesResponse, mapZ3kDevice, parseRetryAfter } = require('../lib/zontClient');
+const { ZontClient, ZontApiError, isValidId, isValidEntityId, mapDevicesResponse, mapZ3kDevice, parseRetryAfter } = require('../lib/zontClient');
 const { createAuthToken } = require('../lib/uiDiscovery');
 
 const client = () => new ZontClient({ clientEmail: 'audit@example.invalid', token: 'test-token', login: 'login', password: 'secret' });
@@ -125,4 +125,37 @@ test('mapping validates snapshot structure and prevents non-finite readings', ()
   assert.equal(mapped.sensors.length, 1);
   assert.equal(mapped.sensors[0].id, 0);
   assert.equal(mapped.sensors[0].value, null);
+});
+
+test('signed entity IDs remain valid without weakening device ID or coercion validation', async (t) => {
+  for (const id of [-1, '-1', -2147483648, '-2147483648', 0, '0', 20, '20']) {
+    assert.equal(isValidEntityId(id), true);
+  }
+  for (const id of [null, undefined, '', ' ', false, true, '- 1', '--1', '1/2', '-1.5', NaN, Infinity, Number.MIN_SAFE_INTEGER - 1]) {
+    assert.equal(isValidEntityId(id), false);
+  }
+  assert.equal(isValidId(-1), false, 'device IDs retain their separate validation');
+  const calls = [];
+  t.mock.method(global, 'fetch', async (url, options) => {
+    calls.push({ url, options });
+    return Response.json({ ok: true });
+  });
+  await client().setCircuitTargetTemperature(1, '-10', 22);
+  assert.equal(calls[0].url, 'https://my.zont.online/api/widget/v3/devices/1/circuits/-10/actions/target-temp');
+  for (const id of [null, '', true, 'bad', NaN, 1.5]) {
+    await assert.rejects(() => client().setCircuitTargetTemperature(1, id, 22), /Invalid device\/circuit/);
+  }
+  assert.equal(calls.length, 1);
+});
+
+test('mapping preserves signed outdoor sensor IDs and readings', () => {
+  const mapped = mapZ3kDevice({ id: 1, online: true, sensors: [
+    { id: -17, name: 'Улица', type: 'temperature', value: -12.3, status: 'ok' },
+    { id: '-2147483648', name: 'Outdoor', type: 'temperature', value: -5, status: 'ok' },
+    { id: 0, name: 'Inside', type: 'temperature', value: 20, status: 'ok' },
+  ] });
+  assert.deepEqual(mapped.sensors.map((sensor) => sensor.id), [-17, -2147483648, 0]);
+  assert.equal(mapped.sensors[0].value, -12.3);
+  assert.ok(mapped.sensors.every((sensor) => sensor.supported));
+  assert.equal(mapped.sensors[0].recommendedInclude, true);
 });

@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { JSDOM } = require('jsdom');
+const { mapDiscoveredDevices } = require('../lib/uiDiscovery');
 
 const html = fs.readFileSync(path.join(__dirname, '../homebridge-ui/public/index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -287,4 +288,31 @@ test('DOM UI keeps new discovery controls locked until staging completes and res
   assert.equal(f.window.document.querySelector('.circuit-check[data-device-id="2"]').disabled, true);
   assert.equal(f.window.document.querySelector('.sensor-check').disabled, false);
   assert.equal(f.saveEnabled(), true);
+});
+
+test('DOM UI displays and preserves saved signed outdoor sensor IDs through discovery and selection', async (t) => {
+  const f = await setup({ selectedSensors: [{ deviceId: 1, sensorIds: [-17, 20] }] });
+  t.after(() => f.dom.window.close());
+  f.bridge.request = async () => ({ devices: mapDiscoveredDevices({ devices: [{
+    id: 1, name: 'House', online: true, circuits: [], sensors: [
+      { id: '-17', name: 'Улица', type: 'temperature', value: -12.3, status: 'ok' },
+      { id: 20, name: 'Indoor', type: 'temperature', value: 21, status: 'ok' },
+    ],
+  }] }) });
+  await f.hooks.onDiscover();
+  const outdoor = f.window.document.querySelector('.sensor-check[data-sensor-id="-17"]');
+  assert.ok(outdoor, 'outdoor sensor must reach the actual selection DOM');
+  assert.equal(outdoor.checked, true);
+  assert.equal(outdoor.disabled, false);
+  assert.match(f.el('sensorsContainer').textContent, /Улица/);
+  assert.match(f.el('sensorsContainer').textContent, /-12\.3/);
+  assert.deepEqual(f.saved().selectedSensors, [{ deviceId: 1, sensorIds: [-17, 20] }]);
+  outdoor.click();
+  await f.hooks.stageConfigDraft();
+  assert.deepEqual(f.saved().selectedSensors, [{ deviceId: 1, sensorIds: [20] }]);
+  outdoor.click();
+  await f.hooks.stageConfigDraft();
+  assert.deepEqual(f.saved().selectedSensors, [{ deviceId: 1, sensorIds: [-17, 20] }]);
+  await f.hooks.onDiscover();
+  assert.equal(f.window.document.querySelector('.sensor-check[data-sensor-id="-17"]').checked, true);
 });

@@ -124,6 +124,8 @@ The custom settings UI shows supported ZONT sensors after device discovery. Devi
 - `temperature` sensors as HomeKit `TemperatureSensor` accessories.
 - `humidity` sensors as HomeKit `HumiditySensor` accessories.
 
+ZONT sensor IDs may be signed integers, including negative IDs and `0`; their sign is preserved in discovery, selection and accessory identity. Version 0.2.0 incorrectly filtered negative IDs before display; the 0.2.1 fix restores support without changing existing UUIDs.
+
 Outdoor sensors are recommended by name only when the sensor name contains `Улица`, `outdoor`, or `outside`, and only on first discovery if no sensor selection was saved. Explicitly empty selections are respected on subsequent discoveries. Internet weather sensors such as `Погода из интернета` are optional and are not selected by default.
 
 Only temperature and humidity are currently implemented. HomeKit does have standard services for opening/contact, motion, leakage and smoke; adding them requires verifying ZONT trigger semantics and is a future feature, not an API limitation.

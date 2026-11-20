@@ -127,3 +127,14 @@ test('mapDiscoveredDevices rejects incomplete responses without pretending disco
   assert.throws(() => mapDiscoveredDevices({}), /devices must be an array/);
   assert.deepEqual(mapDiscoveredDevices({ devices: [] }), []);
 });
+
+test('discovery includes sensor-only devices with signed outdoor sensor IDs', () => {
+  const discovered = mapDiscoveredDevices({ ok: true, devices: [{
+    id: 1, name: 'Outdoor controller', online: true, circuits: [],
+    sensors: [{ id: '-17', name: 'Улица', type: 'temperature', value: -12.3, status: 'ok' }],
+  }] });
+  assert.equal(discovered.length, 1);
+  assert.equal(discovered[0].sensors[0].id, -17);
+  assert.equal(discovered[0].sensors[0].supported, true);
+  assert.equal(discovered[0].sensors[0].recommendedInclude, true);
+});

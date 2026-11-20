@@ -30,6 +30,8 @@ The lock file is committed and matches the package version. CI uses `npm ci`, no
 
 Important regressions: do not add `Perms` to a fake `Characteristic` class. It belongs to the HAP module. A fake-only suite previously concealed a production failure despite very high line coverage. Real DOM clicks with delayed config IPC verify synchronous discovery locking and preservation of pending deselection. Real HAP tests cover independently absent, equal and contradictory limits, preserving known constraints and disallowing unsafe commands while keeping valid readings available. Actual `handleSetRequest()` tests, including queued writes, verify that a read-only transition during a command cannot cache or emit the unconfirmed requested setpoint after server rounding.
 
+Signed entity-ID regressions exercise raw ZONT response → discovery → actual sensor-selection DOM → saved config → restored/new real-HAP accessory. Negative outdoor readings are distinct from negative IDs; both must be preserved. Device-ID validation remains separate, and signed circuit commands, explicit deselection and temporary snapshot absence are covered.
+
 ## Coverage scope
 
 `npm run test:coverage` measures `lib/**` and the UI server, excluding dependencies/tests/tool scripts. It enforces **95% lines, 90% branches and 95% functions**. The browser HTML is executed behaviorally by DOM tests but is not included in the numeric V8 file-coverage totals. Do not describe the percentage as whole-project or device-level coverage.

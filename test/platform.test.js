@@ -25,6 +25,15 @@ test('normalizeSelectedSensors keeps finite device and sensor ids', () => {
   ]);
 });
 
+test('saved selections preserve signed entity IDs while rejecting invalid IDs', () => {
+  assert.deepEqual(platformInternals.normalizeSelectedSensors([
+    { deviceId: 1, sensorIds: [-17, '-2147483648', 0, null, '', true, 'bad'] },
+  ]), [{ deviceId: 1, sensorIds: [-17, -2147483648, 0] }]);
+  assert.deepEqual(platformInternals.normalizeSelectedDevices([
+    { id: 1, includeAll: false, includeCircuitIds: ['-10', 10, null, false] },
+  ]), [{ id: 1, includeAll: false, includeCircuitIds: [-10, 10] }]);
+});
+
 test('buildAccessoryName supports both naming modes and sanitizes spaces', () => {
   assert.equal(
     platformInternals.buildAccessoryName({ accessoryNameMode: 'device_and_circuit' }, ' House  Name ', '  2  SU '),

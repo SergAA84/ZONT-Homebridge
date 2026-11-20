@@ -356,3 +356,53 @@ test('real HAP: queued writes retain confirmed values when the later response re
   assert.ok(!changes.includes(23.3));
   assert.ok(!target.props.perms.includes(hap.Perms.PAIRED_WRITE));
 });
+
+test('real HAP: signed outdoor sensor selections restore the same UUID and publish negative temperatures', async () => {
+  const f = fixture({ selectedDevices: [], selectedSensors: [{ deviceId: 1, sensorIds: ['-17'] }] });
+  const uuid = hap.uuid.generate('homebridge-zont-thermostat-sensor:1:-17');
+  const restored = new TestAccessory('House - Улица', uuid);
+  restored.context = {
+    accessoryType: 'sensor', deviceId: 1, sensorId: -17, sensorType: 'temperature', key: 'sensor:1:-17',
+  };
+  restored.addService(hap.Service.TemperatureSensor);
+  f.platform.configureAccessory(restored);
+  f.platform.client.getDevices = async () => ({ devices: [device({ circuits: [], sensors: [
+    { id: '-17', name: 'Улица', type: 'temperature', value: -12.3, status: 'ok' },
+  ] })] });
+  await f.platform.refreshAndSyncAccessories();
+  assert.equal(f.unregistered.length, 0);
+  assert.equal(f.registered.length, 0, 'restored identity must be reused, not replaced');
+  assert.equal(f.platform.cachedAccessories.length, 1);
+  assert.equal(f.platform.cachedAccessories[0], restored);
+  assert.ok(Math.abs((await get(f.runtime('sensor:1:-17'), C.CurrentTemperature)) + 12.3) < 1e-9,
+    'HAP minStep rounding may introduce floating-point representation noise');
+  assert.equal(await get(f.runtime('sensor:1:-17'), C.StatusActive), true);
+  f.platform.client.getDevices = async () => ({ devices: [] });
+  await f.platform.refreshAndSyncAccessories();
+  assert.equal(f.unregistered.length, 0, 'temporary absence must not delete signed selections');
+  f.platform.config.selectedSensors = [];
+  await f.platform.refreshAndSyncAccessories();
+  assert.equal(f.unregistered.length, 1, 'explicit deselection still removes the sensor');
+});
+
+test('real HAP: a new signed outdoor sensor is registered and signed circuit commands retain their IDs', async () => {
+  const f = fixture({
+    selectedDevices: [{ id: 1, includeAll: false, includeCircuitIds: [-10] }],
+    selectedSensors: [{ deviceId: 1, sensorIds: [-17] }],
+  });
+  const snapshot = device({
+    circuits: [{ ...device().circuits[0], id: -10 }],
+    sensors: [{ id: -17, name: 'Outdoor', type: 'temperature', value: -5, status: 'ok' }],
+  });
+  f.platform.client.getDevices = async () => ({ devices: [snapshot] });
+  await f.platform.refreshAndSyncAccessories();
+  assert.equal(f.registered.length, 2);
+  assert.equal(await get(f.runtime('sensor:1:-17'), C.CurrentTemperature), -5);
+  let command;
+  f.platform.client.setCircuitTargetTemperature = async (deviceId, circuitId, target) => {
+    command = { deviceId, circuitId, target };
+    return { device: { ...snapshot, circuits: [{ ...snapshot.circuits[0], target_temp: target }] } };
+  };
+  await f.runtime('1:-10').handleSetTargetTemperature(23);
+  assert.deepEqual(command, { deviceId: 1, circuitId: -10, target: 23 });
+});

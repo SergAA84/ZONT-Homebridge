@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning.
 
+## [0.2.1] - 2026-11-20
+
+- Fixed a 0.2.0 discovery regression that silently filtered signed (negative) ZONT sensor IDs. Entity IDs now have separate signed-safe-integer validation from device IDs, consistently across discovery, saved circuit/sensor selection and command targeting. Existing accessory UUIDs remain unchanged.
+- Added end-to-end mapping → discovery → DOM selection and real-HAP restoration/registration regressions for signed outdoor sensor IDs and negative temperature readings; explicit deselection and transient-absence retention remain covered.
+
 ## [0.2.0] - 2026-11-20
 
 ### Reliability and compatibility review (2026-11-20)
