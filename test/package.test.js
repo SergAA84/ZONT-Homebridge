@@ -61,3 +61,21 @@ test('current custom UI dependency supports the server API used by the plugin', 
   assert.equal(typeof HomebridgePluginUiServer, 'function');
   assert.equal(typeof RequestError, 'function');
 });
+
+test('README images use portable absolute URLs backed by packaged local assets', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '../README.md'), 'utf8');
+  const imageUrls = [...readme.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/gi)].map((match) => match[1]);
+  imageUrls.push(...[...readme.matchAll(/!\[[^\]]*\]\(([^\s)]+)/g)].map((match) => match[1]));
+  assert.ok(imageUrls.length > 0);
+  for (const source of imageUrls) {
+    const url = new URL(source);
+    assert.equal(url.protocol, 'https:');
+    assert.equal(url.hostname, 'raw.githubusercontent.com');
+    const prefix = '/SergAA84/ZONT-Homebridge/main/';
+    assert.ok(url.pathname.startsWith(prefix));
+    const asset = url.pathname.slice(prefix.length);
+    assert.ok(asset.startsWith('assets/'));
+    assert.ok(packageJson.files.includes('assets'));
+    assert.ok(fs.existsSync(path.join(__dirname, '..', asset)));
+  }
+});

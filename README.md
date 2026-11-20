@@ -1,7 +1,7 @@
 # Homebridge ZONT Thermostat
 
 <p align="center">
-  <img src="assets/icon.png" alt="Homebridge ZONT Thermostat" width="256" />
+  <img src="https://raw.githubusercontent.com/SergAA84/ZONT-Homebridge/main/assets/icon.png" alt="Homebridge ZONT Thermostat" width="256" />
 </p>
 
 Homebridge 2 dynamic platform plugin that exposes ZONT heating/cooling circuits as HomeKit thermostats and selected temperature/humidity sensors.

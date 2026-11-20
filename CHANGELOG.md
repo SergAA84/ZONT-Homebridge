@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning.
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-11-20
 
 ### Reliability and compatibility review (2026-11-20)
 
@@ -23,6 +23,7 @@ This project follows semantic versioning.
 - Updated UI-utils to 2.3.0, added Node 26 support and minimum-Node/current-LTS CI, refreshed GitHub Actions and synchronized the lock file.
 - Added real HAP-NodeJS, jsdom DOM, UI-server IPC and fault/race/auth regression tests, with enforced coverage thresholds; clarified that coverage does not replace physical HomeKit validation.
 - Updated all project documentation, including iOS 27/updated Apple Home, HAP-only scope, security and manual release gates.
+- Used an absolute raw GitHub image URL so the README logo renders on both GitHub and npm.
 
 ### Earlier local improvements
 
