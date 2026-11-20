@@ -43,7 +43,7 @@ test('isCircuitHeating respects off and summer mode flags', () => {
   assert.equal(platformInternals.isCircuitHeating({ active: true }), true);
   assert.equal(platformInternals.isCircuitHeating({ active: true, isOff: true }), false);
   assert.equal(platformInternals.isCircuitHeating({ active: true, inSummerMode: true }), false);
-  assert.equal(platformInternals.isCircuitHeating({ status: 'ok' }), true);
+  assert.equal(platformInternals.isCircuitHeating({ status: 'ok' }), false);
   assert.equal(platformInternals.isCircuitHeating({ status: 'error' }), false);
 });
 
@@ -54,22 +54,29 @@ test('temperature helpers clamp invalid and out-of-range values', () => {
   assert.equal(accessoryInternals.clampTemperature('bad', 5, 35), 5);
 });
 
-test('normalizeTargetBounds repairs invalid bounds', () => {
-  assert.deepEqual(accessoryInternals.normalizeTargetBounds(35, 5, 0.5), {
-    min: 5,
-    max: 35,
-    step: 0.5,
-  });
+test('normalizeTargetBounds preserves explicit constraints and fails closed on uncertain ranges', () => {
+  assert.equal(accessoryInternals.normalizeTargetBounds(35, 5, 0.5), null);
 
   assert.deepEqual(accessoryInternals.normalizeTargetBounds(20, 20, 1), {
     min: 20,
-    max: 21,
+    max: 20,
     step: 1,
+    writable: false,
   });
 
   assert.deepEqual(accessoryInternals.normalizeTargetBounds(null, null, 0), {
     min: 5,
     max: 35,
     step: 0.5,
+    writable: false,
+  });
+  assert.deepEqual(accessoryInternals.normalizeTargetBounds(40, null, 1, 70), {
+    min: 40, max: 70, step: 1, writable: false,
+  });
+  assert.deepEqual(accessoryInternals.normalizeTargetBounds(null, -5, 0.5, -10), {
+    min: -10, max: -5, step: 0.5, writable: false,
+  });
+  assert.deepEqual(accessoryInternals.normalizeTargetBounds(5, 35, 0.5), {
+    min: 5, max: 35, step: 0.5, writable: true,
   });
 });

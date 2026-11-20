@@ -8,7 +8,7 @@ try {
   throw error;
 }
 
-const { ZontClient, mapZ3kDevice } = require('../lib/zontClient');
+const { createAuthToken, discoverDevices } = require('../lib/uiDiscovery');
 
 function toRequestError(error, code) {
   if (RequestError) {
@@ -31,10 +31,7 @@ class UiServer extends HomebridgePluginUiServer {
 
   async handleAuthToken(payload) {
     try {
-      const client = this.createClient(payload);
-      const token = await client.createAuthToken();
-
-      return { token };
+      return await createAuthToken(payload);
     } catch (error) {
       throw toRequestError(error, 'AUTH_FAILED');
     }
@@ -42,55 +39,20 @@ class UiServer extends HomebridgePluginUiServer {
 
   async handleDiscover(payload) {
     try {
-      const client = this.createClient(payload);
-      const body = await client.getDevices({
-        fields: ['circuits', 'modes', 'sensors', 'connection'],
-      });
-
-      const devices = (body.devices || [])
-        .map(mapZ3kDevice)
-        .filter((device) => Array.isArray(device.circuits) && device.circuits.length > 0)
-        .map((device) => ({
-          ...device,
-          circuits: device.circuits.map((circuit) => ({
-            ...circuit,
-            recommendedInclude: !circuit.technical,
-          })),
-        }));
-
-      return { devices };
+      return await discoverDevices(payload);
     } catch (error) {
       throw toRequestError(error, 'DISCOVERY_FAILED');
     }
   }
+}
 
-  createClient(payload) {
-    const clientEmail = payload?.clientEmail;
-    const token = payload?.token;
-    const login = payload?.login;
-    const password = payload?.password;
-
-    if (!clientEmail) {
-      throw new Error('clientEmail is required');
-    }
-
-    if (!token && !(login && password)) {
-      throw new Error('Provide token or login/password');
-    }
-
-    return new ZontClient({
-      clientEmail,
-      token,
-      login,
-      password,
-      clientName: 'Homebridge ZONT Plugin UI',
-    });
+if (require.main === module) {
+  try {
+    new UiServer();
+  } catch (error) {
+    console.error(`[homebridge-zont-thermostat] Custom UI server failed: ${error.stack || error.message}`);
+    process.exitCode = 1;
   }
 }
 
-try {
-  (() => new UiServer())();
-} catch (error) {
-  console.error(`[homebridge-zont-thermostat] Custom UI server failed: ${error.stack || error.message}`);
-  process.exit(1);
-}
+module.exports = { UiServer };

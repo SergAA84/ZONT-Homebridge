@@ -1,149 +1,90 @@
-# ZONT API v3 Mapping
+# ZONT Widget API v3 mapping
 
-## Base URL
+Checked against official schema **26.11.2 (2026-11-18)**:
+[OpenAPI source](https://my.zont.online/api/widget/v3/docs).
 
-```text
-https://my.zont.online/api/widget/v3
-```
+Base URL is fixed to `https://my.zont.online/api/widget/v3`. Redirects are rejected. The plugin does not use API v1/v2.
 
-The plugin intentionally uses Widget API v3 only.
+## Authentication and 2FA
 
-## Authentication
-
-Supported methods from ZONT API v3:
-
-- Basic Auth: login/password.
-- Token Auth: `X-ZONT-Token` header.
-
-All requests include:
-
-```text
-X-ZONT-Client: <clientEmail>
-```
-
-## Token Creation
-
-Endpoint:
+All requests require `X-ZONT-Client: <clientEmail>`. Runtime uses `X-ZONT-Token`. Token creation uses HTTP Basic authentication:
 
 ```http
 POST /authtokens
-Authorization: Basic base64(login:password)
 Content-Type: application/json
-X-ZONT-Client: <clientEmail>
+Authorization: Basic base64(login:password)
+X-ZONT-Client: user@example.com
 
 {
-  "client_name": "Homebridge ZONT Plugin UI"
+  "client_name": "Homebridge ZONT Plugin UI",
+  "totp_code": "012345"
 }
 ```
 
-The response token is stored in Homebridge config and used at runtime.
+`totp_code` is optional only when the account has no 2FA. Since schema **26.11.1 (2026-11-09)**, 2FA-enabled accounts require a current TOTP or backup code to issue a token. The code is a string (leading zeros matter). The UI never persists it, and clears it after every attempt. Each issued token can generate a ZONT push/email notification. Existing token authentication does not require adding a code to polling requests.
 
-## Device Discovery
+Login/password are cleared from the draft after successful generation. Saving with Homebridge's standard Save persists the token; the token is not an encrypted vault entry.
 
-Endpoint:
+## Discovery and state
 
 ```http
-GET /devices?fields=circuits&modes&sensors&connection
-X-ZONT-Token: <token>
-X-ZONT-Client: <clientEmail>
+GET /devices?fields=circuits&fields=modes&fields=sensors
+X-ZONT-Client: user@example.com
+X-ZONT-Token: token
 ```
 
-The plugin requests these fields as a comma-separated `fields` value:
+Array query arguments are repeated, not comma-joined. `connection` is a base device field and is not included in `fields`. `modes` is requested for discovery compatibility but mode activation is not implemented.
 
-```text
-circuits,modes,sensors,connection
-```
+`devices` must be an array. Device/circuit IDs must be non-negative safe integers or digit strings. Invalid device/circuit structures fail the refresh before reconciliation; invalid individual sensor IDs are ignored. Sensor ID `0` is valid. Only `online === true` counts as online. Missing entity arrays mean no entities in that snapshot, not an instruction to delete selected accessories.
 
-ZONT API v3 returns only the first field when repeated query parameters are used, so the plugin intentionally sends `fields=circuits,modes,sensors,connection` rather than `fields=circuits&fields=sensors`.
+## Circuit mapping
 
-## Circuit Model
+| ZONT field | Use |
+| --- | --- |
+| `id`, `name`, `type` | Stable identity, display, heating/cooling service configuration |
+| `actual_temp`, `target_temp` | HomeKit current/target temperature; missing/invalid values are unavailable |
+| `min`, `max`, `step` | Explicit ordered distinct bounds allow writes; missing/equal bounds expose a read-only target; contradictory bounds invalidate it. Display-only fallback bounds never reverse or relax a supplied constraint. Step falls back to 0.5. |
+| `active`, `is_off`, `in_summer_mode` | Current active state; `status: ok` alone is not proof of heating |
+| `is_dependent` | Read-only target, blocked writes |
+| `status` | `failure` makes the runtime unavailable and is logged even without error details |
+| `error` | `{ oem, text }`, normalized as strings and logged |
+| `current_mode`, `time_left` | Mapped diagnostics/future mode support; not exposed as controls |
 
-ZONT `Circuit` fields used:
+Types `consumer`, `boiler`, `dhw` use `HEAT`; `cooling` uses `COOL`. Boiler/DHW circuits are technical and not recommended by default. Technical circuits can still be selected explicitly. There is no circuit on/off control. Offline is a communication error, not current state `OFF`.
 
-- `id`: HomeKit accessory identity and write target.
-- `name`: accessory display name.
-- `type`: circuit type and technical circuit detection.
-- `actual_temp`: HomeKit `CurrentTemperature`.
-- `target_temp`: HomeKit `TargetTemperature`.
-- `current_mode`: stored internally for future mode support.
-- `active`: HomeKit heating state.
-- `is_off`: forces HomeKit current heating state to `OFF`.
-- `in_summer_mode`: forces HomeKit current heating state to `OFF`.
-- `min`: HomeKit target temperature minimum.
-- `max`: HomeKit target temperature maximum.
-- `step`: HomeKit target temperature step.
-- `status`: fallback state information.
-
-## Target Temperature Write
-
-Endpoint:
+## Target write
 
 ```http
 POST /devices/{device_id}/circuits/{entity_id}/actions/target-temp
-X-ZONT-Token: <token>
-X-ZONT-Client: <clientEmail>
 Content-Type: application/json
+X-ZONT-Client: user@example.com
+X-ZONT-Token: token
 
-{
-  "target_temp": 21.5
-}
+{"target_temp": 21.5}
 ```
 
-ZONT API notes:
+This command puts the circuit into **manual target mode**, replacing its active preset. ZONT waits for device confirmation and returns an updated `device` (`{ ok, device }`). Apply only the changed circuit; do not reconcile accessory removal from a command response. If necessary, confirm using a scoped devices read for that device and `fields=circuits`.
 
-- Sets the circuit to manual target temperature mode.
-- Waits for device confirmation.
-- Returns an error immediately if device is offline.
-
-## Technical Circuits
-
-The plugin marks these circuit types as technical by default:
-
-- `boiler`
-- `dhw`
-
-These circuits are visible in the settings UI but not selected by default.
-
-Circuit types `consumer` and `cooling` are not considered technical by default.
+The confirmed server target is returned to HAP through `WRITE_RESPONSE`, including any server rounding. If applying the response removes write-response permissions (new dependency or incomplete bounds), the outstanding HomeKit write fails read-only but the confirmed reading is retained; otherwise HAP would restore the requested value. This does not undo a delivered ZONT command and must not trigger a retry. Dependent circuits reject new writes locally. No POST is automatically retried. The runtime command budget is eight seconds including queue waiting and confirmation; uncertainty marks the circuit unavailable until polling recovers. A timeout does **not** prove the heating controller did not execute the command.
 
 ## Sensors
 
-ZONT `Sensor` fields used:
+Implemented services: `temperature` → `TemperatureSensor`, `humidity` → `HumiditySensor`. Device online state, data age, a finite/in-range value, and sensor status all affect availability. Allowed ranges are -50…100 °C and 0…100 %; invalid values are unavailable, not clamped into fabricated readings. Humidity is rounded to whole percent.
 
-- `id`: HomeKit accessory identity.
-- `name`: accessory display name.
-- `type`: HomeKit service mapping.
-- `status`: stored for UI/runtime context.
-- `value`: HomeKit current value.
-- `unit`: shown in the settings UI.
-- `battery`, `rssi`, `signal_strength`: shown in discovery data when available.
-- `limits`: shown in discovery data when available.
+ZONT statuses are `unknown`, `ok`, `failure`, `alarm`, `silent_alarm`. `unknown`, absent status and `failure` are unavailable; other listed statuses are valid readings. An alarm on a temperature sensor may indicate a threshold, not loss of the measurement. HomeKit `StatusActive` and `StatusFault` reflect effective availability.
 
-Supported sensor types:
+`triggered`, `battery`, `rssi`, `signal_strength` and `limits` are mapped but not published as separate HomeKit functions. Signal strength accepts `no_signal`, `weak`, `fair`, `good`, `excellent`. The raw discovery data includes these fields; the current UI displays name/type/value/status, not a separate diagnostics panel.
 
-- `temperature`: exposed as HomeKit `TemperatureSensor`.
-- `humidity`: exposed as HomeKit `HumiditySensor`.
+Other ZONT sensor types are currently ignored. HomeKit has standard contact/motion/leak/smoke services, so these may be added after trigger semantics and hardware behavior are tested. Voltage, pressure, modulation and similar values do not have equivalent ordinary Apple Home sensor tiles.
 
-Other ZONT sensor types, such as `pressure`, `voltage`, `modulation`, and `dhw_speed`, are intentionally not exposed because HomeKit has no direct standard service mapping for them.
+## HTTP and error behavior
 
-Sensor recommendations are name-based only. Sensors containing `Улица`, `outdoor`, or `outside` are selected by default. Internet weather sensors such as `Погода из интернета` are not selected by default.
+Successful requests require HTTP 2xx **and** JSON `ok: true`. Errors preserve HTTP status, machine code and a bounded `Retry-After` delay. JSON errors commonly include `error` and `error_ui`; response text/HTML and authorization headers are not logged.
 
-## Error Handling
+The abort timer covers the whole response body read. Runtime requests use an eight-second timeout; UI requests default to 30 seconds. Shutdown cancels active runtime requests. Poll errors cause bounded exponential backoff, while commands are not retried. Malformed/incomplete snapshots cannot trigger accessory deletion.
 
-ZONT API errors are expected as:
+## Changes since the previous project baseline
 
-```json
-{
-  "ok": false,
-  "error": "device_is_offline",
-  "error_ui": "Устройство не на связи"
-}
-```
-
-The plugin logs `error_ui` when present, otherwise `error`.
-
-Network errors are wrapped with operation name, for example:
-
-```text
-Network error during GET /devices: fetch failed (ECONNRESET)
-```
+- **26.8.2:** `BoilerErrorReport.oem_code` may be a string (`A21`); that actuator model is not consumed by this plugin. Circuit errors already preserve strings.
+- **26.11.1:** mandatory token-issuance 2FA when enabled, and issuance notifications; supported by the ephemeral code UI.
+- **26.11.2:** numeric `readout` in `Status`/`ToggleButton`. These control models are not implemented, so this is not a breaking change to existing functions.

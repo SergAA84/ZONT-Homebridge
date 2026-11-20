@@ -1,5 +1,8 @@
 name: Build and Lint
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -13,22 +16,32 @@ jobs:
       matrix:
         node-version:
           - 22.x
+          - 22.12.0
           - 24.x
+          - 26.x
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
 
       - name: Test
         run: npm test
+
+      - name: Coverage
+        if: matrix.node-version == '24.x'
+        run: npm run test:coverage
+
+      - name: Package contents
+        if: matrix.node-version == '24.x'
+        run: npm pack --dry-run --ignore-scripts

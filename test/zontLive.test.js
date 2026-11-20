@@ -19,7 +19,7 @@ test('live ZONT Widget API v3 discovery smoke test', async (t) => {
 
   const body = await client.getDevices({
     deviceIds,
-    fields: ['circuits', 'modes', 'sensors', 'connection'],
+    fields: ['circuits', 'modes', 'sensors'],
   });
 
   assert.equal(body.ok, true);

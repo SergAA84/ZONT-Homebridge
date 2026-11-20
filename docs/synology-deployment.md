@@ -9,7 +9,7 @@ This document is platform-specific. Normal users should install the plugin from 
 3. Search for `homebridge-zont-thermostat`.
 4. Click `Install`.
 5. Open plugin settings.
-6. Generate a ZONT token and select circuits.
+6. Generate a ZONT token (enter a TOTP/backup code if the account uses 2FA) and select circuits/sensors.
 7. Save and restart Homebridge when prompted.
 
 No manual file copying or path editing is required.
@@ -53,7 +53,7 @@ View logs from the Homebridge UI or with `hb-service logs` where available.
 Useful expected log lines:
 
 ```text
-Loaded plugin: homebridge-zont-thermostat@0.1.1
+Loaded plugin: homebridge-zont-thermostat@0.2.0
 Registering platform 'homebridge-zont-thermostat.ZontPlatform'
 [homebridge-zont-thermostat] Custom UI server ready
 ```
@@ -82,4 +82,12 @@ homebridge-zont-thermostat
 
 ### Stale Accessories
 
-If selected circuits were removed but still appear, save plugin config and restart Homebridge. The platform unregisters stale accessories during refresh.
+Selected accessories temporarily missing from ZONT are intentionally kept as unavailable to preserve Apple Home rooms/automations. Explicit deselection removes them on a successful refresh. To remove an entity that is no longer discoverable, remove its ID in the JSON configuration and restart. A failed cloud refresh never serves as evidence that an accessory should be deleted.
+
+### Child Bridge and Node versions
+
+Use the latest patched Node 22, 24 or 26 release supported by the Synology/Homebridge installation, and HAP enabled on the bridge. The plugin settings UI preserves Homebridge's `_bridge`/`_disabled` fields. Matter-only bridges do not expose this HAP-only plugin. Back up the Homebridge configuration and pairing storage before upgrading the package or changing bridge topology.
+
+### No Response after an outage
+
+Offline, failed, missing or stale readings are reported unavailable rather than showing an old temperature as current. Poll failures trigger exponential backoff up to 30 minutes and may honor a ZONT `Retry-After` delay. Check network connectivity/token validity and allow the next retry; do not repeatedly generate new tokens to troubleshoot a temporary outage.

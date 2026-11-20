@@ -47,6 +47,11 @@
       <input id="password" class="form-control" type="password" autocomplete="current-password" />
     </div>
     <div>
+      <label class="form-label" for="totpCode">2FA code (TOTP or backup code)</label>
+      <input id="totpCode" class="form-control" type="password" autocomplete="one-time-code" />
+      <div class="muted">Only for token creation. Never saved.</div>
+    </div>
+    <div>
       <label class="form-label" for="token">Token</label>
       <input id="token" class="form-control" type="password" />
     </div>
@@ -70,7 +75,7 @@
     <button id="getTokenBtn" class="btn btn-primary btn-sm" type="button">Get Token by Login/Password</button>
     <button id="discoverBtn" class="btn btn-outline-primary btn-sm" type="button">Load Devices and Circuits</button>
   </div>
-  <div class="muted mt-2">Tip: token is used for runtime. Login/password can be left empty after token is saved. Use the standard Homebridge Save button below.</div>
+  <div class="muted mt-2">Runtime uses the token. Login/password are cleared after successful token creation. Each new token can trigger a ZONT push/email notification. Use the standard Homebridge Save button below.</div>
 </div>
 
 <div class="zont-card">
@@ -88,12 +93,16 @@
   const state = {
     config: null,
     devices: [],
+    busy: false,
+    recommendSensors: false,
+    saveReady: false,
   };
 
   const ui = {
     clientEmail: document.getElementById('clientEmail'),
     login: document.getElementById('login'),
     password: document.getElementById('password'),
+    totpCode: document.getElementById('totpCode'),
     token: document.getElementById('token'),
     pollInterval: document.getElementById('pollInterval'),
     platformName: document.getElementById('platformName'),
@@ -104,7 +113,8 @@
     sensorsContainer: document.getElementById('sensorsContainer'),
   };
 
-  let stageTimer = null;
+  let stageVersion = 0;
+  let stageQueue = Promise.resolve();
 
   let initialized = false;
 
@@ -118,6 +128,8 @@
     try {
       await loadConfig();
       bindEvents();
+      state.saveReady = true;
+      updateSaveButton();
     } catch (error) {
       initialized = false;
       homebridge.toast.error(error.message || 'Failed to load plugin configuration');
@@ -159,6 +171,7 @@
     };
 
     state.config = existing;
+    state.recommendSensors = !Object.prototype.hasOwnProperty.call(existing, 'selectedSensors');
 
     ui.clientEmail.value = existing.clientEmail || '';
     ui.login.value = existing.login || '';
@@ -170,26 +183,37 @@
   }
 
   async function onGetToken() {
+    if (state.busy) return;
+    setBusy(true);
     try {
       homebridge.showSpinner();
       const result = await homebridge.request('/auth-token', {
         clientEmail: ui.clientEmail.value.trim(),
         login: ui.login.value.trim(),
         password: ui.password.value,
+        totpCode: ui.totpCode.value.trim(),
       });
 
       ui.token.value = result.token;
+      ui.login.value = '';
+      ui.password.value = '';
       await stageConfigDraft();
       homebridge.toast.success('Token generated successfully.');
     } catch (error) {
       homebridge.toast.error(error.message || 'Token request failed');
     } finally {
+      ui.totpCode.value = '';
+      setBusy(false);
       homebridge.hideSpinner();
     }
   }
 
   async function onDiscover() {
+    if (state.busy) return;
+    setBusy(true);
     try {
+      // Flush the current DOM before replacing it with a new discovery result.
+      await stageConfigDraft();
       homebridge.showSpinner();
       const result = await homebridge.request('/discover', {
         clientEmail: ui.clientEmail.value.trim(),
@@ -198,16 +222,43 @@
         password: ui.password.value,
       });
 
-      state.devices = result.devices || [];
+      if (!Array.isArray(result.devices)) throw new Error('Invalid device discovery response');
+      state.devices = result.devices;
       renderDevices();
       renderSensors();
       await stageConfigDraft();
+      state.recommendSensors = false;
       homebridge.toast.success(`Loaded ${state.devices.length} devices.`);
     } catch (error) {
       homebridge.toast.error(error.message || 'Failed to load devices');
     } finally {
+      setBusy(false);
       homebridge.hideSpinner();
     }
+  }
+
+  function setBusy(busy) {
+    state.busy = busy;
+    ui.getTokenBtn.disabled = busy;
+    ui.discoverBtn.disabled = busy;
+    [ui.clientEmail, ui.login, ui.password, ui.totpCode, ui.token,
+      ui.pollInterval, ui.platformName, ui.accessoryNameMode].forEach((el) => { el.disabled = busy; });
+    updateSelectionControls();
+    updateSaveButton();
+  }
+
+  function updateSelectionControls() {
+    ui.devicesContainer.querySelectorAll('.device-check').forEach((el) => { el.disabled = state.busy; });
+    ui.sensorsContainer.querySelectorAll('.sensor-check').forEach((el) => { el.disabled = state.busy; });
+    ui.devicesContainer.querySelectorAll('.circuit-check').forEach((el) => {
+      const device = ui.devicesContainer.querySelector(`.device-check[data-device-id="${el.dataset.deviceId}"]`);
+      el.disabled = state.busy || !device?.checked;
+    });
+  }
+
+  function updateSaveButton() {
+    if (state.saveReady && !state.busy) homebridge.enableSaveButton?.();
+    else homebridge.disableSaveButton?.();
   }
 
   function renderDevices() {
@@ -240,6 +291,14 @@
           ? '<span class="badge text-bg-secondary">technical</span>'
           : '<span class="badge text-bg-success">recommended</span>';
 
+        const dependentBadge = circuit.dependent
+          ? ' <span class="badge text-bg-warning">dependent (read-only)</span>'
+          : '';
+        const limitsKnown = Number.isFinite(circuit.min) && Number.isFinite(circuit.max) && circuit.min < circuit.max;
+        const limitsBadge = !circuit.dependent && !limitsKnown
+          ? ' <span class="badge text-bg-warning">target limits unavailable (read-only)</span>'
+          : '';
+
         const currentText = typeof circuit.actualTemp === 'number' ? `${circuit.actualTemp.toFixed(1)} C` : 'n/a';
         const targetText = typeof circuit.targetTemp === 'number' ? `${circuit.targetTemp.toFixed(1)} C` : 'n/a';
 
@@ -249,7 +308,7 @@
               <input class="form-check-input circuit-check" type="checkbox"
                 data-device-id="${device.id}" data-circuit-id="${circuit.id}" ${checked ? 'checked' : ''} ${deviceChecked ? '' : 'disabled'}>
               <label class="form-check-label">
-                <strong>${escapeHtml(circuit.name)}</strong> (#${circuit.id}) ${badge}
+                <strong>${escapeHtml(circuit.name)}</strong> (#${circuit.id}) ${badge}${dependentBadge}${limitsBadge}
               </label>
             </div>
             <div class="muted">type: ${escapeHtml(circuit.typeLabel)}, current: ${currentText}, target: ${targetText}</div>
@@ -281,13 +340,18 @@
           c.disabled = !enabled;
         });
 
-        await stageConfigDraft();
+        try {
+          await stageConfigDraft();
+        } catch (error) {
+          homebridge.toast.error(error.message || 'Failed to stage configuration');
+        }
       });
     });
 
     ui.devicesContainer.querySelectorAll('.circuit-check').forEach((el) => {
       el.addEventListener('change', scheduleStageConfig);
     });
+    updateSelectionControls();
   }
 
   function renderSensors() {
@@ -315,7 +379,7 @@
       const sensorsHtml = device.sensors.map((sensor) => {
         const checked = selectedSet
           ? selectedSet.has(Number(sensor.id))
-          : sensor.recommendedInclude;
+          : (state.recommendSensors && sensor.recommendedInclude);
         const typeLabel = sensor.type === 'humidity' ? 'Humidity' : 'Temperature';
         const valueText = typeof sensor.value === 'number' ? `${sensor.value}${sensor.unit || ''}` : 'n/a';
         const badge = sensor.recommendedInclude
@@ -349,42 +413,75 @@
     ui.sensorsContainer.querySelectorAll('.sensor-check').forEach((el) => {
       el.addEventListener('change', scheduleStageConfig);
     });
+    updateSelectionControls();
   }
 
   function scheduleStageConfig() {
-    if (stageTimer) {
-      clearTimeout(stageTimer);
-    }
-
-    stageTimer = setTimeout(() => {
-      stageTimer = null;
-      stageConfigDraft().catch((error) => {
-        homebridge.toast.error(error.message || 'Failed to stage configuration');
-      });
-    }, 250);
+    // Stage immediately so the standard Save button cannot beat a debounce.
+    stageConfigDraft().catch((error) => {
+      homebridge.toast.error(error.message || 'Failed to stage configuration');
+    });
   }
 
   async function stageConfigDraft() {
-    const nextConfig = {
+    // Capture a monotonically increasing version for this staging request and
+    // serialize all saves through a single chain. This prevents a slow older
+    // getPluginConfig/updatePluginConfig from overwriting a newer draft.
+    const version = ++stageVersion;
+    state.saveReady = false;
+    updateSaveButton();
+    const pollInterval = Number(ui.pollInterval.value);
+    if (!Number.isInteger(pollInterval) || pollInterval < 10 || pollInterval > 300) {
+      throw new Error('Poll interval must be a whole number from 10 to 300 seconds');
+    }
+    const draft = {
       platform: 'ZontPlatform',
       name: ui.platformName.value.trim() || 'ZONT',
       clientEmail: ui.clientEmail.value.trim(),
       login: ui.login.value.trim(),
       password: ui.password.value,
       token: ui.token.value.trim(),
-      pollInterval: Number(ui.pollInterval.value || 30),
+      pollInterval,
       accessoryNameMode: ui.accessoryNameMode.value,
       selectedDevices: collectSelectedDevices(),
       selectedSensors: collectSelectedSensors(),
     };
 
-    const pluginConfigRaw = await homebridge.getPluginConfig();
-    const pluginConfig = Array.isArray(pluginConfigRaw) ? pluginConfigRaw : [];
-    const withoutCurrent = pluginConfig.filter((x) => x.platform !== 'ZontPlatform');
-    withoutCurrent.push(nextConfig);
+    // Chain from a recovered base so a previous failure does not leave the queue
+    // permanently rejected (which would silently stop all future saves).
+    const run = stageQueue.catch(() => {}).then(async () => {
+      // A newer staging request has superseded this one; skip the stale write.
+      if (version !== stageVersion) {
+        return;
+      }
 
-    await homebridge.updatePluginConfig(withoutCurrent);
-    state.config = nextConfig;
+      const pluginConfigRaw = await homebridge.getPluginConfig();
+      const pluginConfig = Array.isArray(pluginConfigRaw) ? pluginConfigRaw : [];
+      const current = pluginConfig.find((x) => x.platform === 'ZontPlatform') || state.config;
+      // Homebridge owns fields such as _bridge and _disabled. Preserve them and
+      // future options; only overwrite fields controlled by this form.
+      const nextConfig = { ...current, ...draft };
+      delete nextConfig.totpCode;
+      delete nextConfig.totp_code;
+      const withoutCurrent = pluginConfig.filter((x) => x.platform !== 'ZontPlatform');
+      withoutCurrent.push(nextConfig);
+
+      // Re-check after the async read in case a newer draft arrived meanwhile.
+      if (version !== stageVersion) {
+        return;
+      }
+
+      await homebridge.updatePluginConfig(withoutCurrent);
+      state.config = nextConfig;
+      if (version === stageVersion) {
+        state.saveReady = true;
+        updateSaveButton();
+      }
+    });
+
+    // Keep the queue tail recoverable; return the run so callers see the error.
+    stageQueue = run.catch(() => {});
+    return run;
   }
 
   function collectSelectedDevices() {
@@ -395,21 +492,28 @@
     const selectedDeviceCheckboxes = [...ui.devicesContainer.querySelectorAll('.device-check')]
       .filter((x) => x.checked);
 
-    return selectedDeviceCheckboxes.map((deviceEl) => {
+    const visibleDeviceIds = new Set(state.devices.map((device) => Number(device.id)));
+    const absentDevices = (state.config.selectedDevices || []).filter((device) => !visibleDeviceIds.has(Number(device.id)));
+    return [...absentDevices, ...selectedDeviceCheckboxes.map((deviceEl) => {
       const deviceId = Number(deviceEl.dataset.deviceId);
       const allCircuits = [...ui.devicesContainer.querySelectorAll(`.circuit-check[data-device-id="${deviceId}"]`)];
       const checkedCircuits = allCircuits
         .filter((x) => x.checked)
         .map((x) => Number(x.dataset.circuitId));
 
-      const includeAll = allCircuits.length > 0 && checkedCircuits.length === allCircuits.length;
+      const previous = (state.config.selectedDevices || []).find((device) => Number(device.id) === deviceId);
+      const visibleIds = new Set(allCircuits.map((el) => Number(el.dataset.circuitId)));
+      const absentIds = (previous?.includeCircuitIds || []).filter((id) => !visibleIds.has(Number(id)));
+      // Selecting all visible circuits must not silently opt into future boilers.
+      const includeAll = previous && inferIncludeAll(previous)
+        && checkedCircuits.length === allCircuits.length;
 
       return {
         id: deviceId,
-        includeAll,
-        includeCircuitIds: includeAll ? [] : checkedCircuits,
+        includeAll: Boolean(includeAll),
+        includeCircuitIds: includeAll ? [] : [...new Set([...absentIds.map(Number), ...checkedCircuits])],
       };
-    });
+    })];
   }
 
   function collectSelectedSensors() {
@@ -420,20 +524,30 @@
     const sensorCheckboxes = [...ui.sensorsContainer.querySelectorAll('.sensor-check')]
       .filter((x) => x.checked);
 
-    const byDevice = new Map();
+    const byDevice = new Map((state.config.selectedSensors || []).map((device) => [
+      Number(device.deviceId), new Set((device.sensorIds || []).map(Number)),
+    ]));
+    // Clear only the visible supported sensors. Keep absent device/sensor IDs,
+    // and keep empty selections to distinguish opt-out from first discovery.
+    state.devices.forEach((device) => {
+      const id = Number(device.id);
+      const supported = (device.sensors || []).filter((sensor) => sensor.supported);
+      if (supported.length && !byDevice.has(id)) byDevice.set(id, new Set());
+      supported.forEach((sensor) => byDevice.get(id).delete(Number(sensor.id)));
+    });
     sensorCheckboxes.forEach((sensorEl) => {
       const deviceId = Number(sensorEl.dataset.deviceId);
       const sensorId = Number(sensorEl.dataset.sensorId);
       if (!byDevice.has(deviceId)) {
-        byDevice.set(deviceId, []);
+        byDevice.set(deviceId, new Set());
       }
 
-      byDevice.get(deviceId).push(sensorId);
+      byDevice.get(deviceId).add(sensorId);
     });
 
     return [...byDevice.entries()].map(([deviceId, sensorIds]) => ({
       deviceId,
-      sensorIds,
+      sensorIds: [...sensorIds],
     }));
   }
 

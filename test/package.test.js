@@ -1,9 +1,12 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const packageJson = require('../package.json');
 const schema = require('../config.schema.json');
 const settings = require('../lib/settings');
+const { HomebridgePluginUiServer, RequestError } = require('@homebridge/plugin-ui-utils');
 
 test('package metadata follows Homebridge plugin requirements', () => {
   assert.equal(packageJson.name, settings.PLUGIN_NAME);
@@ -15,6 +18,9 @@ test('package metadata follows Homebridge plugin requirements', () => {
   assert.equal(packageJson.engines.homebridge, '^2.0.0');
   assert.match(packageJson.engines.node, /22/);
   assert.match(packageJson.engines.node, /24/);
+  assert.equal(packageJson.dependencies['@homebridge/plugin-ui-utils'], '^2.3.0');
+  assert.ok(packageJson.keywords.includes('supports-hap'));
+  assert.match(packageJson.engines.node, /26/);
   assert.equal(packageJson.scripts.postinstall, undefined);
 });
 
@@ -26,4 +32,32 @@ test('config schema matches Homebridge platform alias and custom UI', () => {
   assert.ok(schema.schema.required.includes('clientEmail'));
   assert.ok(schema.schema.required.includes('token'));
   assert.equal(schema.schema.properties.selectedSensors.type, 'array');
+});
+
+test('installation is locked and package contains no duplicate logo asset', () => {
+  assert.equal(fs.existsSync(path.join(__dirname, '../package-lock.json')), true);
+  const lock = require('../package-lock.json');
+  assert.equal(lock.version, packageJson.version);
+  assert.equal(lock.packages[''].version, packageJson.version);
+  assert.equal(fs.existsSync(path.join(__dirname, '../assets/logo.png')), false);
+
+  const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/build.yml'), 'utf8');
+  assert.match(workflow, /run: npm ci/);
+});
+
+test('documentation describes the current query format and sensor accessories', () => {
+  const apiDocumentation = fs.readFileSync(path.join(__dirname, '../docs/zont-api-v3.md'), 'utf8');
+  const architecture = fs.readFileSync(path.join(__dirname, '../docs/architecture.md'), 'utf8');
+  const integration = fs.readFileSync(path.join(__dirname, '../docs/homebridge-integration.md'), 'utf8');
+
+  assert.match(apiDocumentation, /GET \/devices\?fields=circuits&fields=modes&fields=sensors/);
+  assert.match(apiDocumentation, /https:\/\/my\.zont\.online\/api\/widget\/v3\/docs/);
+  assert.match(architecture, /temperature and humidity sensors/);
+  assert.match(integration, /Service\.TemperatureSensor/);
+  assert.match(integration, /Service\.HumiditySensor/);
+});
+
+test('current custom UI dependency supports the server API used by the plugin', () => {
+  assert.equal(typeof HomebridgePluginUiServer, 'function');
+  assert.equal(typeof RequestError, 'function');
 });

@@ -1,148 +1,70 @@
-# Homebridge Integration
+# Homebridge and Apple Home integration
 
-## Package Metadata
+## Supported environment
 
-Homebridge package name:
+- Homebridge `^2.0.0`; current reference release **2.5.0** uses HAP-NodeJS **2.3.0**.
+- Node.js `^22.12.0 || ^24.0.0 || ^26.0.0`. Install current security updates for the chosen LTS branch.
+- Homebridge UI 5, with `@homebridge/plugin-ui-utils ^2.3.0` (reference UI **5.30.1**).
+- Plugin package `homebridge-zont-thermostat`, platform alias `ZontPlatform`.
 
-```json
-{
-  "name": "homebridge-zont-thermostat",
-  "engines": {
-    "node": "^22.12.0 || ^24.0.0",
-    "homebridge": "^2.0.0"
-  }
-}
-```
+The plugin is CommonJS. Node 22.12 supports synchronous ESM dependencies via `require()` but may print an experimental interoperability warning; later supported LTS patches do not require suppressing warnings. Production receives HAP from `api.hap`; HAP-NodeJS is only a development dependency for tests.
 
-The package must include keyword:
+Package keywords include `homebridge-plugin` and **`supports-hap`**. Do not declare `supports-matter` unless the plugin actually registers Matter accessories.
 
-```json
-"homebridge-plugin"
-```
+## iOS 27 and updated Apple Home
 
-## Platform Alias
+As checked on 20 November 2026, Apple's published iOS 27 changes focus on combined activity alerts, AI descriptions/search of HomeKit Secure Video and 4K video on compatible cameras. No mandatory replacement of ordinary thermostat/temperature/humidity HAP services was identified. This is a Node.js bridge, not an iOS app linking the HomeKit SDK; iOS application entitlements do not apply to it.
 
-The platform alias is:
+Apple ended support for the previous Apple Home architecture on **10 February 2026**. Use updated Apple Home and up-to-date HomePod/Apple TV software. A home hub is required for remote access, shared control and Home notifications; iPad is not a hub on the updated architecture.
 
-```text
-ZontPlatform
-```
+Homebridge 2 also supports **opt-in Matter APIs** (`api.matter`), but this plugin remains HAP-only. Enabling Matter on a bridge does not convert HAP services automatically. A Matter-only bridge with HAP disabled cannot publish these accessories. Native Matter support, energy features and new sensor types are separate future projects, not required iOS 27 compatibility fixes.
 
-Runtime config blocks must include:
+Official references:
 
-```json
-{
-  "platform": "ZontPlatform"
-}
-```
+- [Apple iOS 27](https://www.apple.com/os/ios/)
+- [iOS 27 release notes](https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-27-release-notes)
+- [Update Apple Home](https://support.apple.com/en-us/102287)
+- [Homebridge developer documentation and transport declarations](https://developers.homebridge.io/)
+- [Homebridge 2.5.0](https://github.com/homebridge/homebridge/releases/tag/v2.5.0)
+- [UI-utils releases](https://github.com/homebridge/plugin-ui-utils/releases)
 
-## Config Schema
+## HAP services
 
-`config.schema.json` must be at package root.
+Every accessory includes `AccessoryInformation` (ZONT manufacturer, entity-type model, stable serial).
 
-Important fields:
+### Service.Thermostat
 
-```json
-{
-  "pluginAlias": "ZontPlatform",
-  "pluginType": "platform",
-  "singular": true,
-  "strictValidation": false,
-  "customUi": true
-}
-```
+- `Name`: whitespace-normalized display name. Paired names may remain customized in Apple Home.
+- `CurrentTemperature` and `TargetTemperature`: independently require valid fresh readings.
+- `CurrentHeatingCoolingState`: `HEAT`/`COOL` when active, `OFF` when idle; unavailable when offline/failed/stale.
+- `TargetHeatingCoolingState`: heating circuits declare `HEAT`, cooling declares `COOL`. This is not a circuit enable/disable control.
+- Target bounds/step come from ZONT. Dependent targets are read/notify only, and writes fail with `READ_ONLY_CHARACTERISTIC`.
+- Missing/equal limits also make the target read-only. Contradictory limits invalidate target reads/writes; they are not swapped into an invented valid range. Display-only fallbacks retain supplied bounds and include a valid known setpoint so higher-temperature circuits remain readable.
+- Ordinary targets use `api.hap.Perms` including `WRITE_RESPONSE`, returning the server-confirmed setpoint.
+- If a command response makes the target read-only before HAP completes its setter, that outstanding HAP write fails read-only instead of succeeding without `WRITE_RESPONSE`. The confirmed reading remains intact; no second command is sent.
 
-Homebridge UI 5 / Homebridge 2 is stricter about schema validity. Required fields must be declared at object schema level:
+`StatusFault` is **not** a valid optional Thermostat characteristic and is not added. Circuit failures are logged and surfaced through communication errors on getters. Target write failures are mapped to HAP communication errors rather than escaping as unhandled exceptions.
 
-```json
-"required": ["name", "clientEmail", "token"]
-```
+### Service.TemperatureSensor / Service.HumiditySensor
 
-Do not use `required: true` inside individual property definitions.
+Supported sensors have value getters and `StatusFault`/`StatusActive`. Offline devices, missing readings, unknown/failure status and stale data are unavailable. Humidity is rounded to the characteristic's whole-percent step. Binary sensors and battery characteristics are not implemented.
 
-## Custom UI
+## Custom UI and cache
 
-Required files:
+`config.schema.json` is at package root and enables custom UI. Required fields are an object-level JSON Schema array, not `required: true` on individual properties. Server routes are handled through UI-utils IPC, not an arbitrary HTTP listener.
 
-```text
-homebridge-ui/public/index.html
-homebridge-ui/server.js
-```
+The custom UI uses `homebridge.updatePluginConfig()` to stage drafts; it does not call `savePluginConfig()`. The standard Save button commits them. Save is disabled while staging, during network actions or after invalid input/staging failure, and re-enabled after a current draft succeeds. Network actions synchronously lock form/selection controls, including during discovery's initial config flush and after rerendering, preventing edits from being lost to an older snapshot. Unlocking preserves the disabled circuits of unchecked devices. `_bridge`, `_disabled`, unrelated options and other config blocks are preserved.
 
-Server dependency:
+Selected accessories absent from a ZONT snapshot are kept unavailable to preserve Home rooms and automations. Explicit deselection removes them on a successful refresh. Sensor service-type migrations and circuit information changes retain UUIDs.
 
-```json
-"@homebridge/plugin-ui-utils": "^2.0.1"
-```
+## Troubleshooting
 
-Dependencies are installed automatically by npm/Homebridge UI during normal installation. For local development, run:
-
-```bash
-npm install --omit=dev
-```
-
-If dependencies are missing, the custom UI server will fail with:
-
-```text
-Cannot find module '@homebridge/plugin-ui-utils'
-```
-
-## Custom UI Flow
-
-The settings UI uses Homebridge's standard `Save` button.
-
-The custom UI stages changes with:
-
-```js
-homebridge.updatePluginConfig(configBlocks)
-```
-
-It does not call `homebridge.savePluginConfig()` directly.
-
-## HomeKit Service Mapping
-
-Each selected ZONT circuit becomes one HomeKit `Service.Thermostat`.
-
-Characteristics:
-
-- `Name`: normalized circuit/accessory name.
-- `CurrentTemperature`: ZONT `actual_temp`.
-- `TargetTemperature`: ZONT `target_temp`; writes to ZONT target-temp action.
-- `CurrentHeatingCoolingState`: `HEAT` when circuit is active, otherwise `OFF`.
-- `TargetHeatingCoolingState`: currently fixed to `HEAT`.
-
-Target temperature props:
-
-- `minValue`: ZONT `min`, fallback `5`.
-- `maxValue`: ZONT `max`, fallback `35`.
-- `minStep`: ZONT `step`, fallback `0.5`.
-
-## Known Design Choice
-
-HomeKit `TargetHeatingCoolingState.OFF` is not currently exposed. The plugin controls only target temperature, not circuit enable/disable state.
-
-## Common Homebridge 2 Issues
-
-### Manual Config Instead Of Custom UI
-
-Cause: Homebridge UI cannot find package schema.
-
-Check:
+For a missing custom UI, check package/schema discovery:
 
 ```bash
 node -e "const fs=require('fs'); const p=require.resolve('homebridge-zont-thermostat/package.json'); console.log(p); console.log(fs.existsSync(p.replace('package.json','config.schema.json')));"
 ```
 
-Expected: `true`.
+Use the package manager/Homebridge UI to reinstall missing dependencies. Do not add a separate production HAP dependency to fix permissions. Repeated poll errors cause backoff, so reconnecting may not update instantly. Check account token validity, outbound HTTPS/DNS and the next retry after an outage.
 
-### Accessory Registration Warning
-
-Warning:
-
-```text
-A platform configured a new accessory under the plugin name '<wrong-plugin-name>'. However no loaded plugin could be found for the name!
-```
-
-Cause: registration plugin name does not match package name.
-
-Fix: `PLUGIN_NAME` must be `homebridge-zont-thermostat`.
+Physical HomeKit pairing, read-only rendering, Siri and automation behavior must still be checked on real Apple devices before a public release; automated HAP/DOM tests are not certification.
