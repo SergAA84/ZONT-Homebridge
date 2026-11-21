@@ -50,7 +50,7 @@ test('documentation describes the current query format and sensor accessories', 
   const architecture = fs.readFileSync(path.join(__dirname, '../docs/architecture.md'), 'utf8');
   const integration = fs.readFileSync(path.join(__dirname, '../docs/homebridge-integration.md'), 'utf8');
 
-  assert.match(apiDocumentation, /GET \/devices\?fields=circuits&fields=modes&fields=sensors/);
+  assert.match(apiDocumentation, /GET \/devices\?fields=circuits,modes,sensors/);
   assert.match(apiDocumentation, /https:\/\/my\.zont\.online\/api\/widget\/v3\/docs/);
   assert.match(architecture, /temperature and humidity sensors/);
   assert.match(integration, /Service\.TemperatureSensor/);

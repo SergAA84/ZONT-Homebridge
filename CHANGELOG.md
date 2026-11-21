@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 This project follows semantic versioning.
 
+## [0.2.2] - 2026-11-21
+
+- Fixed missing sensors in settings and HomeKit polling. Live diagnostics showed that repeating the `fields` query parameter returns circuits but omits sensors. The client now uses one comma-separated `fields` value, which returns both on the live API.
+
 ## [0.2.1] - 2026-11-20
 
 - Fixed a 0.2.0 discovery regression that silently filtered signed (negative) ZONT sensor IDs. Entity IDs now have separate signed-safe-integer validation from device IDs, consistently across discovery, saved circuit/sensor selection and command targeting. Existing accessory UUIDs remain unchanged.

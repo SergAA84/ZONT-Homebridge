@@ -1,12 +1,38 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { ZontSensorAccessory, ZontThermostatAccessory } = require('../lib/platformAccessory');
+const { discoverDevices } = require('../lib/uiDiscovery');
 const { hap, TestAccessory, fixture, device, deferred } = require('./helpers');
 
 const C = hap.Characteristic;
 const unavailable = (error) => error === hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
   || error?.hapStatus === hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
 const get = (runtime, characteristic) => runtime.service.getCharacteristic(characteristic).handleGetRequest();
+
+test('live API regression: discovery and polling request sensors in a single comma-separated field filter', async (t) => {
+  const full = device({
+    sensors: [{ id: 20, name: 'Улица', type: 'temperature', value: 4.5, status: 'ok' }],
+  });
+  const { sensors, ...circuitsOnly } = full;
+  const queries = [];
+  t.mock.method(global, 'fetch', async (url) => {
+    const fields = new URL(url).searchParams.getAll('fields');
+    queries.push(fields);
+    return Response.json({ ok: true, devices: [
+      fields.length === 1 && fields[0].split(',').includes('sensors') ? full : circuitsOnly,
+    ] });
+  });
+  const discovered = await discoverDevices({ clientEmail: 'test@example.invalid', token: 'test-token' });
+  assert.equal(discovered.devices[0].sensors[0].name, 'Улица');
+
+  const f = fixture();
+  // The fixture normally stubs polling above the HTTP layer.
+  delete f.platform.client.getDevices;
+  await f.platform.refreshAndSyncAccessories();
+  assert.equal(await get(f.runtime('sensor:1:20'), C.CurrentTemperature), 4.5);
+  assert.ok(f.runtime('1:10'));
+  assert.deepEqual(queries, [['circuits,modes,sensors'], ['circuits,modes,sensors']]);
+});
 
 test('real HAP: permissions and write responses preserve the server-confirmed setpoint', async () => {
   const f = fixture();

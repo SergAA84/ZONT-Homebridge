@@ -241,7 +241,10 @@ test('getDevices sends Widget API v3 token request with expected query and heade
     assert.equal(calls[0].options.method, 'GET');
     assert.equal(calls[0].options.headers['X-ZONT-Client'], 'user@example.com');
     assert.equal(calls[0].options.headers['X-ZONT-Token'], 'token-value');
-    assert.equal(calls[0].url, 'https://my.zont.online/api/widget/v3/devices?device_ids=123456&fields=circuits&fields=modes');
+    const url = new URL(calls[0].url);
+    assert.equal(url.origin + url.pathname, 'https://my.zont.online/api/widget/v3/devices');
+    assert.deepEqual(url.searchParams.getAll('device_ids'), ['123456']);
+    assert.deepEqual(url.searchParams.getAll('fields'), ['circuits,modes']);
     assert.equal(calls[0].options.body, undefined);
   } finally {
     global.fetch = originalFetch;

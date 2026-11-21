@@ -32,6 +32,8 @@ Important regressions: do not add `Perms` to a fake `Characteristic` class. It b
 
 Signed entity-ID regressions exercise raw ZONT response → discovery → actual sensor-selection DOM → saved config → restored/new real-HAP accessory. Negative outdoor readings are distinct from negative IDs; both must be preserved. Device-ID validation remains separate, and signed circuit commands, explicit deselection and temporary snapshot absence are covered.
 
+The field-filter regression simulates the live server returning circuits but omitting `sensors` when `fields` is repeated. It uses the actual HTTP client for both settings discovery and runtime polling, and checks that one comma-separated filter keeps a configured temperature sensor discoverable and readable.
+
 ## Coverage scope
 
 `npm run test:coverage` measures `lib/**` and the UI server, excluding dependencies/tests/tool scripts. It enforces **95% lines, 90% branches and 95% functions**. The browser HTML is executed behaviorally by DOM tests but is not included in the numeric V8 file-coverage totals. Do not describe the percentage as whole-project or device-level coverage.

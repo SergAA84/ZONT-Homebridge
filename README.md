@@ -20,7 +20,7 @@ The plugin uses ZONT Widget API v3 and the Homebridge plugin settings UI. It doe
 
 - Custom Homebridge settings page.
 - ZONT token generation from login/password via `POST /authtokens`, with an ephemeral TOTP/backup-code field for accounts using 2FA.
-- Device discovery via `GET /devices?fields=circuits&fields=modes&fields=sensors`.
+- Device discovery via `GET /devices?fields=circuits,modes,sensors`.
 - Per-device and per-circuit selection.
 - HomeKit `Thermostat` creation for selected circuits: `HEAT` for heating and `COOL` for cooling.
 - Optional HomeKit `TemperatureSensor` and `HumiditySensor` creation for selected ZONT sensors, including `StatusFault`/`StatusActive` derived from the ZONT sensor status.
