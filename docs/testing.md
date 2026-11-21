@@ -34,6 +34,8 @@ Signed entity-ID regressions exercise raw ZONT response → discovery → actual
 
 The field-filter regression simulates the live server returning circuits but omitting `sensors` when `fields` is repeated. It uses the actual HTTP client for both settings discovery and runtime polling, and checks that one comma-separated filter keeps a configured temperature sensor discoverable and readable.
 
+To check the workaround against ZONT itself, run the optional live discovery test with `ZONT_VERIFY_SENSOR_FIELDS=1` in addition to the credentials below. It performs one extra read-only, unfiltered `GET /devices` and compares supported sensor identities with the filtered response. Use an account/device with at least one supported sensor. It does not print sensor IDs, readings, credentials or raw responses.
+
 ## Coverage scope
 
 `npm run test:coverage` measures `lib/**` and the UI server, excluding dependencies/tests/tool scripts. It enforces **95% lines, 90% branches and 95% functions**. The browser HTML is executed behaviorally by DOM tests but is not included in the numeric V8 file-coverage totals. Do not describe the percentage as whole-project or device-level coverage.

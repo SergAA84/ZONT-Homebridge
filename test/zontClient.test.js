@@ -251,6 +251,21 @@ test('getDevices sends Widget API v3 token request with expected query and heade
   }
 });
 
+test('sensor field filter sends one query key; unfiltered baseline sends none', async (t) => {
+  const queries = [];
+  t.mock.method(global, 'fetch', async (url) => {
+    queries.push(new URL(url).searchParams);
+    return Response.json({ ok: true, devices: [] });
+  });
+  const client = new ZontClient({ clientEmail: 'test@example.invalid', token: 'test-token' });
+  const deviceIds = [123, 456];
+  await client.getDevices({ deviceIds, fields: [' circuits ', 'modes', '', 'sensors'] });
+  await client.getDevices({ deviceIds });
+  assert.deepEqual(queries[0].getAll('fields'), ['circuits,modes,sensors']);
+  assert.equal(queries[1].has('fields'), false);
+  for (const query of queries) assert.deepEqual(query.getAll('device_ids'), ['123', '456']);
+});
+
 test('setCircuitTargetTemperature sends official target-temp action payload', async () => {
   const originalFetch = global.fetch;
   const calls = [];

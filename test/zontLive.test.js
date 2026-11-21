@@ -32,4 +32,21 @@ test('live ZONT Widget API v3 discovery smoke test', async (t) => {
   const mappedDevices = body.devices.map(mapZ3kDevice);
   assert.ok(mappedDevices.every((device) => Number.isFinite(device.id)));
   assert.ok(mappedDevices.every((device) => Array.isArray(device.circuits)));
+
+  // Opt in to one extra GET. An account without supported sensors cannot
+  // distinguish a broken field filter from a genuinely empty sensor list.
+  if (process.env.ZONT_VERIFY_SENSOR_FIELDS !== '1') return;
+  const baseline = (await client.getDevices({ deviceIds })).devices.map(mapZ3kDevice);
+  const filtered = new Map(mappedDevices.map((device) => [device.id,
+    new Set(device.sensors.filter((sensor) => sensor.supported).map((sensor) => `${sensor.type}:${sensor.id}`)),
+  ]));
+  let compared = 0;
+  for (const device of baseline) {
+    for (const sensor of device.sensors.filter((item) => item.supported)) {
+      assert.ok(filtered.get(device.id)?.has(`${sensor.type}:${sensor.id}`),
+        'Filtered GET /devices omitted a supported sensor found by the unfiltered request');
+      compared++;
+    }
+  }
+  assert.ok(compared > 0, 'Select a ZONT device/account with at least one supported sensor for the field-filter check');
 });

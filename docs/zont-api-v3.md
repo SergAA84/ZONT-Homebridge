@@ -33,7 +33,19 @@ X-ZONT-Client: user@example.com
 X-ZONT-Token: token
 ```
 
-For `fields`, send one comma-separated value (the URL encoder may encode commas as `%2C`). In a live read-only comparison, repeated `fields` keys returned circuits but omitted `sensors`; both the comma-separated request and the request without `fields` returned the sensor lists. Use the filtered comma-separated request for discovery and polling to avoid requesting unrelated data. This does not change `device_ids` serialization. `connection` is a base device field and is not included in `fields`. `modes` is requested for discovery compatibility but mode activation is not implemented.
+### Production API quirk: repeated `fields` silently omit sensors
+
+Observed against ZONT Widget API v3 (published schema **26.11.2**) and confirmed in Homebridge after upgrading to **0.2.2**. All three read-only requests succeeded, but the returned fields differed:
+
+| `GET /devices` query | Observed result |
+| --- | --- |
+| `?fields=circuits&fields=modes&fields=sensors` | Circuits returned; the `sensors` property was absent, not an empty array. |
+| `?fields=circuits,modes,sensors` | Circuits and sensor lists both returned. |
+| No `fields` parameter | Sensor lists returned along with additional data. |
+
+The issue is easy to miss because ZONT returns success, not an HTTP or API error. It affects both the settings list and runtime polling, and is unrelated to sensor IDs or temperatures. Keep **one comma-separated `fields` value** (commas may appear as `%2C` on the wire). Do not switch to repeated keys based solely on the OpenAPI array type. This workaround does not change `device_ids` serialization.
+
+`connection` is a base device field and is not included in `fields`. `modes` is requested for discovery compatibility but mode activation is not implemented.
 
 `devices` must be an array. Device IDs must be non-negative safe integers or digit strings. ZONT `EntityID` has no non-negative restriction: circuit and sensor IDs accept signed safe integers or signed integer strings, including negative IDs and `0`. Preserve their sign in selections, commands and accessory identity; do not silently discard negative sensor IDs as 0.2.0 did. Invalid device/circuit structures fail the refresh before reconciliation; invalid individual sensor IDs are ignored. Booleans, null/blank IDs, fractions, non-finite numbers and unsafe integers are rejected. Only `online === true` counts as online. Missing entity arrays mean no entities in that snapshot, not an instruction to delete selected accessories.
 
